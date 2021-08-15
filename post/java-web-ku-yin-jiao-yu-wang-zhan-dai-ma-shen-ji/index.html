@@ -1,0 +1,291 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java-WEB】酷因教育网站代码审计 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1629048101359">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java-WEB】酷因教育网站代码审计 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="源码搭建
+使用IDEA打开源码，首先修改pom.xml的几处地方
+
+接着修改project.properties的配置
+
+随后配置运行环境
+
+最后导入sql文件到mysql中即可。
+审计经过
+反射型XSS漏洞
+黑盒测试情况：
+直接在搜索框输..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1629048101359" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java-WEB】酷因教育网站代码审计
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-08-12
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="源码搭建">源码搭建</h2>
+<p>使用IDEA打开源码，首先修改pom.xml的几处地方<br>
+<img src="https://limpid94.github.io/post-images/1629042015880.PNG" alt="" loading="lazy"><br>
+接着修改project.properties的配置<br>
+<img src="https://limpid94.github.io/post-images/1629042035467.PNG" alt="" loading="lazy"><br>
+随后配置运行环境<br>
+<img src="https://limpid94.github.io/post-images/1629042048903.PNG" alt="" loading="lazy"><br>
+最后导入sql文件到mysql中即可。</p>
+<h2 id="审计经过">审计经过</h2>
+<h3 id="反射型xss漏洞">反射型XSS漏洞</h3>
+<h4 id="黑盒测试情况">黑盒测试情况：</h4>
+<p>直接在搜索框输入<code>&quot;&gt;&lt;img+src=&quot;x&quot;+onerror=&quot;alert(/xxx/)</code>，则在相应包中原样输出，未经过滤，直接触发XSS弹窗。<br>
+<img src="https://limpid94.github.io/post-images/1629001212130.PNG" alt="" loading="lazy"></p>
+<h4 id="白盒审计情况">白盒审计情况</h4>
+<p>先看web.xml的filter配置情况。<br>
+<img src="https://limpid94.github.io/post-images/1629001508283.PNG" alt="" loading="lazy"><br>
+从中未发现有XSS的相关过滤项。于是从相应包的XSS的位置找到对应的前端<code>header.jsp</code>，发现搜索框的具体内容是用EL表达式进行取值。<br>
+<img src="https://limpid94.github.io/post-images/1629001897658.PNG" alt="" loading="lazy"><br>
+于是从entity中找到具体的内容<br>
+<img src="https://limpid94.github.io/post-images/1629001888577.PNG" alt="" loading="lazy"><br>
+而该值是从数据库中查询的：<br>
+<img src="https://limpid94.github.io/post-images/1629002287672.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1629002312744.PNG" alt="" loading="lazy"><br>
+到目前的反向追溯都没有发现有转义或者过滤。再到controller层进行查看<br>
+<img src="https://limpid94.github.io/post-images/1629002483122.PNG" alt="" loading="lazy"><br>
+浏览下来也没有对XSS进行处理，因此最后会将危险的XSSpayload原样输出。</p>
+<h3 id="sql注入前台和后台">SQL注入（前台和后台）</h3>
+<p>首先全局搜索<code>${</code>，因为使用<code>${}</code>进行数据库查询是不经过预编译的，因此可能存在SQL注入<br>
+<img src="https://limpid94.github.io/post-images/1628921420323.PNG" alt="" loading="lazy"><br>
+数量还是比较多，任选一处入手好了。<br>
+<img src="https://limpid94.github.io/post-images/1628921575493.PNG" alt="" loading="lazy"><br>
+看到此处的对应的方法为<code>delMsgSystemById</code>，查看dao中相应的接口：<br>
+<img src="https://limpid94.github.io/post-images/1628923025919.PNG" alt="" loading="lazy"><br>
+再看service相关的代码是如何实现的。具体的代码在<code>MsgSystemServiceImpl.java</code>中<br>
+<img src="https://limpid94.github.io/post-images/1628923498595.PNG" alt="" loading="lazy"><br>
+通过其对应到的<code>AdminMsgSystemController.java</code>的源码可以看到对应的接口名称和传入参数<br>
+<img src="https://limpid94.github.io/post-images/1628923677426.PNG" alt="" loading="lazy"><br>
+通过对逻辑代码的审查，看到如果查询成功就显示json字符串的</p>
+<pre><code class="language-json">{&quot;success&quot;:true,&quot;message&quot;:&quot;操作成功！&quot;,&quot;entity&quot;:null}
+</code></pre>
+<p>否则显示</p>
+<pre><code class="language-json">{&quot;success&quot;:true,&quot;message&quot;:&quot;系统繁忙,请稍后再试！&quot;,&quot;entity&quot;:null}
+</code></pre>
+<p>由此推断该注入类型为盲注。<br>
+但由于是在后台，所以需要先用管理员账号登录后再尝试访问接口。<br>
+<img src="https://limpid94.github.io/post-images/1628923908100.PNG" alt="" loading="lazy"><br>
+通过后台的debug日志，发现确实带入了我们的“恶意”语句<br>
+<img src="https://limpid94.github.io/post-images/1628923993785.PNG" alt="" loading="lazy"><br>
+此处以查询当前user()的首位字符为例，当ascii码大于113的时候执行了sleep(3)，大于114时直接返回。<br>
+<img src="https://limpid94.github.io/post-images/1628924643788.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1628924652053.PNG" alt="" loading="lazy"><br>
+由此现象可以说明当前user()的首位字符的ascii码为114，转成字符为<code>r</code><br>
+当然，此处要利用还是比较鸡肋的，继续看看是否存在前端的SQL注入。<br>
+继续查找，发现<code>CourseFavoritesMapper.xml</code>中存在SQL注入的“标志”<br>
+<img src="https://limpid94.github.io/post-images/1628925616258.PNG" alt="" loading="lazy"><br>
+通过id去dao中查找对应的接口情况：<br>
+<img src="https://limpid94.github.io/post-images/1628925723642.PNG" alt="" loading="lazy"><br>
+又找到对应的serviceImpl<br>
+<img src="https://limpid94.github.io/post-images/1628925779369.PNG" alt="" loading="lazy"><br>
+最后定位到Controller<br>
+<img src="https://limpid94.github.io/post-images/1628925802781.PNG" alt="" loading="lazy"><br>
+看到对应的url是<code>/deleteFaveorite/{ids}</code>，当然直接这样访问是不对的，因为在这个controller一开始的地方多了个<code>RequestMapping</code>注解<br>
+<img src="https://limpid94.github.io/post-images/1628925796096.PNG" alt="" loading="lazy"><br>
+因此正确的接口是<code>/uc/deleteFaveorite/{ids}</code><br>
+尝试访问<code>/uc/deleteFaveorite/29'</code>发现报错<br>
+<img src="https://limpid94.github.io/post-images/1628928733737.PNG" alt="" loading="lazy"><br>
+从后台的日志可以看到报错，并且查询语句确实传入我们的单引号。<br>
+<img src="https://limpid94.github.io/post-images/1628928752438.PNG" alt="" loading="lazy"><br>
+使用sqlmap进行测试，结果存在注入。<br>
+<img src="https://limpid94.github.io/post-images/1628929004341.PNG" alt="" loading="lazy"><br>
+其余的注入点不再一一测试。</p>
+<h3 id="越权">越权</h3>
+<p>为了测试，注册两个普通用户123@qq.com和111@q.com。id分别为68和69。<br>
+现在登录id为69的账户，修改名称为张三后提交并拦截数据包：<br>
+<img src="https://limpid94.github.io/post-images/1628931594712.PNG" alt="" loading="lazy"></p>
+<p><img src="https://limpid94.github.io/post-images/1628931671504.PNG" alt="" loading="lazy"><br>
+发送后登录id为68的账号查看情况<br>
+<img src="https://limpid94.github.io/post-images/1628931748620.PNG" alt="" loading="lazy"><br>
+为了究其原因，需要从代码层面入手。<br>
+首先到controller中找到对应的逻辑代码。<br>
+<img src="https://limpid94.github.io/post-images/1628931856524.PNG" alt="" loading="lazy"><br>
+可以看到直接把传入的POST参数实例化成User类的实例并对应赋值后带入数据库执行。再UserServiceImpl.java中第95行看到直接执行dao的updateUser方法。<br>
+<img src="https://limpid94.github.io/post-images/1628931991994.PNG" alt="" loading="lazy"><br>
+在对应的mapper中找到更新语句：<br>
+<img src="https://limpid94.github.io/post-images/1628932076937.PNG" alt="" loading="lazy"><br>
+由此可见整个流程并没有对用户身份进行校验，导致用户可以修改任意账号的信息。<br>
+进一步思考：能否改到admin账号呢？<br>
+从UserMapper.xml中看到，update的语句是执行的表明是EDU_USER，而admin是在SYS_USER中，因此不可以修改admin账号的任何信息。</p>
+<h3 id="任意文件上传">任意文件上传</h3>
+<p>在前台用户的头像上传功能上传头像时可以指定上传类型并上传恶意代码，从而获取服务器权限。<br>
+在测试上传文件时发现fileType参数是允许的类型，如果filename的后缀在fileType所指定的范围内，则可以上传成功（但是经过测试，jsp后缀不可以）<br>
+<img src="https://limpid94.github.io/post-images/1628956875828.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1628956902279.PNG" alt="" loading="lazy"></p>
+<p>原想向从上传的数据包来定位controller，发现没有相关的路径，但是找到在<code>src/main/java/com/inxedu/os/common/controller/VideoUploadController.java</code>中有<code>gok4</code>方法，仔细观察和我们上传图片的数据包中的参数均相同<br>
+<img src="https://limpid94.github.io/post-images/1628961316862.PNG" alt="" loading="lazy"><br>
+从流程中看出，后台会将上传文件的后缀名称是否包含在上传的fileType的值中，若有则进行落地，否则报错。但是这整个过程并没有对后缀进行黑名单检查或者白名单限制。因此可以上传jspx后缀的文件。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E6%BA%90%E7%A0%81%E6%90%AD%E5%BB%BA">源码搭建</a></li>
+<li><a href="#%E5%AE%A1%E8%AE%A1%E7%BB%8F%E8%BF%87">审计经过</a>
+<ul>
+<li><a href="#%E5%8F%8D%E5%B0%84%E5%9E%8Bxss%E6%BC%8F%E6%B4%9E">反射型XSS漏洞</a>
+<ul>
+<li><a href="#%E9%BB%91%E7%9B%92%E6%B5%8B%E8%AF%95%E6%83%85%E5%86%B5">黑盒测试情况：</a></li>
+<li><a href="#%E7%99%BD%E7%9B%92%E5%AE%A1%E8%AE%A1%E6%83%85%E5%86%B5">白盒审计情况</a></li>
+</ul>
+</li>
+<li><a href="#sql%E6%B3%A8%E5%85%A5%E5%89%8D%E5%8F%B0%E5%92%8C%E5%90%8E%E5%8F%B0">SQL注入（前台和后台）</a></li>
+<li><a href="#%E8%B6%8A%E6%9D%83">越权</a></li>
+<li><a href="#%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0">任意文件上传</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/fastjson-fan-xu-lie-hua-xue-xi-bi-ji-yi-chu-shi-lou-dong/">
+              <h3 class="post-title">
+                Fastjson反序列化学习笔记（一）
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
