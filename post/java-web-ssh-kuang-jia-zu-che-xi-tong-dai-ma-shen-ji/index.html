@@ -1,0 +1,259 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java-WEB】SSH框架-租车系统代码审计 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1629267839081">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java-WEB】SSH框架-租车系统代码审计 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="安装过程
+安装过程按照源码中的说明来即可
+
+需要修改opencar/src/db.properties中的数据库服务的相关配置：
+然后在Mysql中添加一个新的数据库命名为opencar即可（主要是为了与db.properties一致）
+如..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1629267839081" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java-WEB】SSH框架-租车系统代码审计
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-08-16
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="安装过程">安装过程</h2>
+<p>安装过程按照源码中的说明来即可<br>
+<img src="https://limpid94.github.io/post-images/1629107639331.PNG" alt="" loading="lazy"><br>
+需要修改<code>opencar/src/db.properties</code>中的数据库服务的相关配置：<br>
+然后在Mysql中添加一个新的数据库命名为<code>opencar</code>即可（主要是为了与<code>db.properties</code>一致）</p>
+<p>如果使用Tomcat运行，则需要将源码中的“opencarrun”文件夹整个移入到webapp下，只要数据库配置正确，访问http://127.0.0.1:8080/opencarrun/ 即可运行</p>
+<h2 id="审计经过">审计经过</h2>
+<h3 id="短信炸弹">短信炸弹</h3>
+<p>通过发送短信的数据包发现短信接口<br>
+<img src="https://limpid94.github.io/post-images/1629129979543.PNG" alt="" loading="lazy"><br>
+通过全局搜索关键字<code>getTelCode</code>，在<code>opencar/src/com/weishang/my/action/FrontAction.java</code>找到发送的方法<br>
+<img src="https://limpid94.github.io/post-images/1629130030965.PNG" alt="" loading="lazy"><br>
+从中得知大致流程：通过url的参数将tel参数取出来，然后随机生成4位数的验证码并调用<code>smi.sendMessageInfo</code>将短信发送出去，只要返回成功就返回发送成功的json字符串，并将手机号和随机随机验证码在session中绑定。<br>
+整个流程没有检查发送次数，因此存在短信轰炸。</p>
+<h3 id="xss">XSS</h3>
+<p>登录用户后进到用户的基本资料处，随便挑选一处编辑添加payload<br>
+<img src="https://limpid94.github.io/post-images/1629131332133.PNG" alt="" loading="lazy"><br>
+保存后刷新发现能够触发XSS<br>
+<img src="https://limpid94.github.io/post-images/1629131337809.PNG" alt="" loading="lazy"></p>
+<p>从前端页面找到对应前端的jsp源码<code>opencar/WebRoot/template/default/page/user/userCenter.jsp</code>，有关的用户信息是从<code>ordinary_user</code>取出：<br>
+<img src="https://limpid94.github.io/post-images/1629209830000.PNG" alt="" loading="lazy"><br>
+由于没有使用框架，需要花点功夫查找这个对象是从哪里来的。<br>
+大致浏览一下网站架构，发现有些地方存在重定向的语句：<br>
+<img src="https://limpid94.github.io/post-images/1629210030336.PNG" alt="" loading="lazy"><br>
+于是想到个人信息应该是登录后通过一定方式跳转过来的，因此全局搜索<code>userCenter.jsp</code>看看存在在哪些文件中。<br>
+<img src="https://limpid94.github.io/post-images/1629210306559.PNG" alt="" loading="lazy"><br>
+查看具体的源码，发现这个对象是从session中取出来的。<br>
+<img src="https://limpid94.github.io/post-images/1629210377987.PNG" alt="" loading="lazy"><br>
+熟悉网站开发的通信学可以想到session中的数据应该是在登录成功的时候被设置的。但是这个不是我们需要继续关心的。现在知道<code>ordinary_user</code>的来源后，要关心更新个人信息的相关流程。<br>
+从保存按钮调用的js函数可以看到，其发送到接口<code>&lt;%=basePath%&gt;wx/wxUpdateUserInfo</code><br>
+<img src="https://limpid94.github.io/post-images/1629211995409.PNG" alt="" loading="lazy"><br>
+全局查找该接口，在<code>opencar/src/com/weishang/my/action/user/WxUpdateUserInfo.java</code>中找到<br>
+<img src="https://limpid94.github.io/post-images/1629212051076.PNG" alt="" loading="lazy"><br>
+从中看到除了tel参数有做长度的限制之外，其余的均从request实例中直接获取并保存。<br>
+<img src="https://limpid94.github.io/post-images/1629212284655.PNG" alt="" loading="lazy"><br>
+在web.xml中也没有看到针对XSS的filter，于是造成了存储型的xss漏洞。<br>
+其余的地方亦相似，就不一一例举。</p>
+<h3 id="越权删除他人账户地址">越权删除他人账户地址</h3>
+<p>在收获地址处可以看到用户的个人地址，虽然此处无法越权查看他人的收货地址，但是可以越权删除。<br>
+在点击删除按钮后，数据包的接口地址为<code>wx/wxDeleteAddress</code>，因此查找相关地址，并在其中找到处理的流程：<br>
+<img src="https://limpid94.github.io/post-images/1629214352415.PNG" alt="" loading="lazy"><br>
+在红框处的流程为从request对象中取出<code>address_id</code>后直接带入数据库执行，并没有核对是否属于当前用户。因此可能存在越权删除的漏洞。<br>
+为了进一步验证漏洞，我设置两个账号test1和test2，其地址分别如下<br>
+<img src="https://limpid94.github.io/post-images/1629214465512.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1629214471950.PNG" alt="" loading="lazy"><br>
+在数据库中对应的id为：<br>
+<img src="https://limpid94.github.io/post-images/1629214482333.PNG" alt="" loading="lazy"><br>
+现在用test1的账户（对应地址为701）对test2的id为702的地址进行删除<br>
+<img src="https://limpid94.github.io/post-images/1629214566538.PNG" alt="" loading="lazy"><br>
+返回删除成功，此时test2的账户中已经找不到收货地址<br>
+<img src="https://limpid94.github.io/post-images/1629214629859.PNG" alt="" loading="lazy"><br>
+当然还有越权查看他人订单，这里就不详细说明了。</p>
+<h3 id="sql注入">SQL注入</h3>
+<p>本源码中与数据库进行交互的地方大量使用了预编译技术，但是由于开发的原因还是不少地方存在变量拼接之处。同时在京东的一篇技术文章也指出在<code>like</code>、<code>in</code>、 <code>order by</code>部分使用预编译技术会产生报错<br>
+<img src="https://limpid94.github.io/post-images/1629265710412.PNG" alt="" loading="lazy"></p>
+<p>从本源码的service部分进行查找，发现了不少的变量拼接。这里以<code>getGoodsPojoListByTypeAndcatAndBranAndPrice</code>为例。<br>
+从ShopService.java中看到getGoodsPojoListByTypeAndcatAndBranAndPrice的实现过程<br>
+<img src="https://limpid94.github.io/post-images/1629265901055.PNG" alt="" loading="lazy"><br>
+这里<code>cat_ids</code>、<code>type_ids</code>、<code>brand_ids</code>、<code>price</code>、<code>order</code>均为string类型，存在输入恶意SQL语句的可能性（查找的过程中直接排除Interger类型，因为JAVA为强类型语言。）<br>
+此处在<code>in</code>后存在变量拼接。紧接着查找调用该方法的地方。<br>
+<img src="https://limpid94.github.io/post-images/1629266094971.PNG" alt="" loading="lazy"><br>
+双击后来到GoodList.java，在里面找到具体的调用过程：<br>
+<img src="https://limpid94.github.io/post-images/1629266163981.PNG" alt="" loading="lazy"><br>
+这里的参数没有经过过滤，直接从requests对象中取出并带入到SQL语句中查询。这样做确实存在SQL注入漏洞。现在需要查找流程从哪里进入到此处。<br>
+在第23行有<code>@WebServlet(displayName=&quot;跳转到信访页面&quot;,name=&quot;GoodsList&quot;,urlPatterns=&quot;/goods&quot;)</code>说明访问的地址是<code>baseurl+/goods</code>，但是查找的时候并没有找到。后来经过长时间的查找，发现跳转的细节是<code>response.sendRedirect(basePath+&quot;goods?cat_id=&quot;+type_id+&quot;&amp;menuId=7&quot;);</code>，于是跟进到FrontAction.java，<br>
+<img src="https://limpid94.github.io/post-images/1629266485172.PNG" alt="" loading="lazy"><br>
+于是构造<code>cat_id</code>的值为<code>1) and if(ascii(substr(user(),1,1))&gt;50,sleep(2),1) -- -</code>，当正确时经过一段时间的延迟后返回<br>
+<img src="https://limpid94.github.io/post-images/1629267571003.PNG" alt="" loading="lazy"><br>
+当错误时直接返回<br>
+<img src="https://limpid94.github.io/post-images/1629267608278.PNG" alt="" loading="lazy"><br>
+后续就不再继续。<br>
+其他的注入点类似，遂不一一分析。</p>
+<h3 id="备注">备注</h3>
+<p>本源码还有一处漏洞在于支付流程可以0元购，但是搭建起来后在支付环节一直报错，弄了很久也没办法修复，遂放弃调试。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E5%AE%89%E8%A3%85%E8%BF%87%E7%A8%8B">安装过程</a></li>
+<li><a href="#%E5%AE%A1%E8%AE%A1%E7%BB%8F%E8%BF%87">审计经过</a>
+<ul>
+<li><a href="#%E7%9F%AD%E4%BF%A1%E7%82%B8%E5%BC%B9">短信炸弹</a></li>
+<li><a href="#xss">XSS</a></li>
+<li><a href="#%E8%B6%8A%E6%9D%83%E5%88%A0%E9%99%A4%E4%BB%96%E4%BA%BA%E8%B4%A6%E6%88%B7%E5%9C%B0%E5%9D%80">越权删除他人账户地址</a></li>
+<li><a href="#sql%E6%B3%A8%E5%85%A5">SQL注入</a></li>
+<li><a href="#%E5%A4%87%E6%B3%A8">备注</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-web-ku-yin-jiao-yu-wang-zhan-dai-ma-shen-ji/">
+              <h3 class="post-title">
+                【Java-WEB】酷因教育网站代码审计
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
