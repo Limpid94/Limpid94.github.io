@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://limpid94.github.io</id>
     <title>Limpid</title>
-    <updated>2021-08-22T16:54:36.434Z</updated>
+    <updated>2021-08-22T16:55:03.548Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://limpid94.github.io"/>
     <link rel="self" href="https://limpid94.github.io/atom.xml"/>
@@ -270,106 +270,6 @@
 <p>接下去，逻辑类漏洞本来想写，但是由于它仿站没完成全部内容，遂放弃。</p>
 <h2 id="参考">参考</h2>
 <p>[SpringMVC 控制器向视图传值的方式] https://blog.csdn.net/u011403655/article/details/46336751</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[【Java-Jackson】Jackson反序列化漏洞学习（一）]]></title>
-        <id>https://limpid94.github.io/post/java-jackson-jackson-fan-xu-lie-hua-lou-dong-xue-xi-yi/</id>
-        <link href="https://limpid94.github.io/post/java-jackson-jackson-fan-xu-lie-hua-lou-dong-xue-xi-yi/">
-        </link>
-        <updated>2021-08-20T09:28:16.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="熟识jackson">熟识Jackson</h2>
-<h3 id="测试代码">测试代码</h3>
-<p>首先在pom.xml中引入jackson依赖</p>
-<pre><code class="language-xml">    &lt;dependency&gt;
-      &lt;groupId&gt;com.fasterxml.jackson.core&lt;/groupId&gt;
-      &lt;artifactId&gt;jackson-core&lt;/artifactId&gt;
-      &lt;version&gt;2.7.9&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;com.fasterxml.jackson.core&lt;/groupId&gt;
-      &lt;artifactId&gt;jackson-databind&lt;/artifactId&gt;
-      &lt;version&gt;2.7.9&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;com.fasterxml.jackson.core&lt;/groupId&gt;
-      &lt;artifactId&gt;jackson-annotations&lt;/artifactId&gt;
-      &lt;version&gt;2.7.9&lt;/version&gt;
-    &lt;/dependency&gt;
-</code></pre>
-<p>然后创建一个User类</p>
-<pre><code class="language-java">package cc.myfastjson;
-
-public class User {
-    private String name;
-    private int age;
-    private int sex;
-
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public int getAge() {
-        return age;
-    }
-
-    public void setAge(int age) {
-        this.age = age;
-    }
-
-    public int getSex() {
-        return sex;
-    }
-
-    public void setSex(int sex) {
-        this.sex = sex;
-    }
-
-    @Override
-    public String toString() {
-        return &quot;User{&quot; +
-                &quot;name='&quot; + name + '\'' +
-                &quot;, age=&quot; + age +
-                &quot;, sex=&quot; + sex +
-                '}';
-    }
-}
-</code></pre>
-<p>最后编写一个序列化的测试函数</p>
-<pre><code class="language-java">package cc.myfastjson;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
-
-public class Study1 {
-    public static void main(String[] args) {
-        User user = new User();
-        user.setName(&quot;zhangsan&quot;);
-        user.setAge(13);
-        user.setSex(1);
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            String json = mapper.writeValueAsString(user);
-            System.out.println(&quot;[*] 序列化结果：&quot;+json);
-            User user2 = mapper.readValue(json,User.class);
-            System.out.println(&quot;[*] 反序列化结果：&quot;+user2);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-}
-</code></pre>
-<p>输出结果如下图所示<br>
-<img src="https://limpid94.github.io/post-images/1629453999571.PNG" alt="" loading="lazy"></p>
 ]]></content>
     </entry>
     <entry>
