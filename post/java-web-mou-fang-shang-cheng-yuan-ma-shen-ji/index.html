@@ -1,0 +1,448 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java-Web】某仿商城源码审计 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1629651271871">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java-Web】某仿商城源码审计 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="下载地址：
+https://gitee.com/project_team/Tmall_demo
+安装：
+##审计过程
+XSS
+反射型XSS
+程序运行起来后看到搜索框，遂尝试xss
+
+
+具体代码的查找则根据前端的html代码定位到对应的jsp..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1629651271871" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java-Web】某仿商城源码审计
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-08-21
+              </span>
+              <span>
+                11 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="下载地址">下载地址：</h2>
+<p>https://gitee.com/project_team/Tmall_demo</p>
+<h2 id="安装">安装：</h2>
+<p>##审计过程</p>
+<h3 id="xss">XSS</h3>
+<h4 id="反射型xss">反射型XSS</h4>
+<p>程序运行起来后看到搜索框，遂尝试xss<br>
+<img src="https://limpid94.github.io/post-images/1629538917561.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1629539009046.PNG" alt="" loading="lazy"><br>
+具体代码的查找则根据前端的html代码定位到对应的jsp，然后根据jsp中的EL表达式对全局进行搜索，找到对应的Controller。<br>
+首先从数据包中的URI截取<code>product?product_name=</code>作为关键词进行查找<br>
+<img src="https://limpid94.github.io/post-images/1629558183309.PNG" alt="" loading="lazy"><br>
+发现最后展示的内容来自<code>requestScope.searchValue</code>。由于该框架有使用SpringMVC，所以需要明确<code>searchValue</code>是从哪里来的。<br>
+这里顺便提一下 SpringMVC 控制器向视图传值的方式有哪些：</p>
+<ul>
+<li>ModelAndView</li>
+<li>ModelMap</li>
+<li>Session</li>
+</ul>
+<p>经过观察，发现此处使用第二种方式传值<br>
+<img src="https://limpid94.github.io/post-images/1629557275826.PNG" alt="" loading="lazy"><br>
+所以通过<code>searchValue</code>定位到<code>src/main/java/com/xq/tmall/controller/fore/ForeProductListController.java</code><br>
+<img src="https://limpid94.github.io/post-images/1629558440397.PNG" alt="" loading="lazy"><br>
+然后往上方查看，发现该值来自<code>product_name</code><br>
+<img src="https://limpid94.github.io/post-images/1629558473062.PNG" alt="" loading="lazy"><br>
+而<code>product_name</code>则直接来自request请求的参数<br>
+<img src="https://limpid94.github.io/post-images/1629558497418.PNG" alt="" loading="lazy"><br>
+可以看到输入即输出，并且在整个源码中没看到web.xml（就离谱！）也没有看到XSS过滤器或处理函数，因此造成反射型xss漏洞。</p>
+<h4 id="存储型xss">存储型XSS</h4>
+<p>同样，在修改个人信息处也存在XSS。现将昵称改为<code>balabala&quot; onmouseover=&quot;alert(1)</code>，保存成功后就能触发。<br>
+<img src="https://limpid94.github.io/post-images/1629559533322.PNG" alt="" loading="lazy"></p>
+<p>与反射型不同，存储型XSS经过存储数据和取出数据并展示两大步骤，因此需要分两大部分来进行追踪。<br>
+<strong>【存储经过】</strong><br>
+通过保存信息的数据包的uri<code>/tmall/user/update</code>定位到对应的controller<code>src/main/java/com/xq/tmall/controller/fore/ForeUserController.java</code>，找到<code>user/update</code>的RequestMapping。<br>
+该部分的源码如下：</p>
+<pre><code class="language-java">    //前台天猫-用户详情更新
+    @RequestMapping(value=&quot;user/update&quot;,method=RequestMethod.POST,produces =&quot;application/json;charset=utf-8&quot;)
+    public String userUpdate(HttpSession session, Map&lt;String,Object&gt; map,
+                             @RequestParam(value = &quot;user_nickname&quot;) String user_nickname  /*用户昵称 */,
+                             @RequestParam(value = &quot;user_realname&quot;) String user_realname  /*真实姓名*/,
+                             @RequestParam(value = &quot;user_gender&quot;) String user_gender  /*用户性别*/,
+                             @RequestParam(value = &quot;user_birthday&quot;) String user_birthday /*用户生日*/,
+                             @RequestParam(value = &quot;user_address&quot;) String user_address  /*用户所在地 */,
+                             @RequestParam(value = &quot;user_profile_picture_src&quot;, required = false)
+                                         String user_profile_picture_src /* 用户头像*/,
+                             @RequestParam(value = &quot;user_password&quot;) String user_password/* 用户密码 */
+    ) throws ParseException, UnsupportedEncodingException {
+        logger.info(&quot;检查用户是否登录&quot;);
+        Object userId = checkUser(session);
+        if (userId != null) {
+            logger.info(&quot;获取用户信息&quot;);
+            User user = userService.get(Integer.parseInt(userId.toString()));
+            map.put(&quot;user&quot;, user);
+        } else {
+            return &quot;redirect:/login&quot;;
+        }
+        logger.info(&quot;创建用户对象&quot;);
+        if (user_profile_picture_src != null &amp;&amp; &quot;&quot;.equals(user_profile_picture_src)) {
+            user_profile_picture_src = null;
+        }
+        User userUpdate = new User()
+                .setUser_id(Integer.parseInt(userId.toString()))
+                .setUser_nickname(user_nickname)
+                .setUser_realname(user_realname)
+                .setUser_gender(Byte.valueOf(user_gender))
+                .setUser_birthday(new SimpleDateFormat(&quot;yyyy-MM-dd&quot;).parse(user_birthday))
+                .setUser_address(new Address().setAddress_areaId(user_address))
+                .setUser_profile_picture_src(user_profile_picture_src)
+                .setUser_password(user_password);
+        logger.info(&quot;执行修改&quot;);
+        if (userService.update(userUpdate)){
+             logger.info(&quot;修改成功!跳转到用户详情页面&quot;);
+             return &quot;redirect:/userDetails&quot;;
+         }
+         throw new RuntimeException();
+    }
+}
+</code></pre>
+<p>该部分浏览下来，就是将用户输入的数据从request中取出并赋值到对应的变量，再调用userService的update方法来执行更新语句。<br>
+而在<code>UserServiceImpl.java</code>同样没有任何过滤。</p>
+<p><strong>【查询并展示经过】</strong><br>
+利用前端页面的<code>填写真实的资料，有助于好友找到你哦。</code>来定位jsp页面，找到<code>src/main/webapp/WEB-INF/page/fore/userDetails.jsp</code>。<br>
+<img src="https://limpid94.github.io/post-images/1629561337925.PNG" alt="" loading="lazy"><br>
+从中得知用户的信息来自<code>requestScope.user</code>。<br>
+找到ForeUserController.java的<code>userDetails</code>，从中看到从session中取出userid并带入数据库中进行查找，将结果返回给user变量并set到map中进行传值。<br>
+<img src="https://limpid94.github.io/post-images/1629561782494.PNG" alt="" loading="lazy"><br>
+该部分也同样没有进行xss的危险函数、字符过滤。因此造成存储型xss漏洞。</p>
+<h3 id="任意文件上传">任意文件上传</h3>
+<p>在用户头像处可以上传用户自定义的图片，但是上传过程中没有对上传的文件和后缀进行校验，导致用户可以上传恶意的代码（webshell）造成服务器权限沦陷。<br>
+<img src="https://limpid94.github.io/post-images/1629562402924.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1629562407489.PNG" alt="" loading="lazy"></p>
+<p>从数据包找到接口的代码<br>
+<img src="https://limpid94.github.io/post-images/1629562664530.PNG" alt="" loading="lazy"><br>
+从上方的红框处得知后端取出上传文件的拓展名后与随机值拼接形成新的文件名，再将新文件名与指定的路径拼接，形成完整的保存路径。<br>
+下方的红框则是当文件正确保存在指定路径下则返回success和相对路径。<br>
+整个过程没有黑名单过滤或者白名单限制，因此可以成功上传任意文件。</p>
+<h3 id="sql注入">SQL注入</h3>
+<p>直接全局搜索<code>${</code>，查看是否有开发疏漏的地方。<br>
+<img src="https://limpid94.github.io/post-images/1629564762268.PNG" alt="" loading="lazy"><br>
+选择第一个进入查看</p>
+<pre><code class="language-xml">    &lt;select id=&quot;selectMoreList&quot; resultMap=&quot;productMap&quot;&gt;
+        SELECT
+            product_id,
+            product_name,
+            product_title,
+            product_price,
+            product_sale_price,
+            product_create_date,
+            product_isEnabled,
+            product_category_id,
+            product_sale_count,
+            product_review_count
+        FROM product
+        &lt;where&gt;
+            &lt;if test=&quot;product != null&quot;&gt;
+                &lt;if test=&quot;product.product_price != null&quot;&gt;and product_sale_price &amp;lt;= #{product.product_price}&lt;/if&gt;
+                &lt;if test=&quot;product.product_sale_price != null&quot;&gt;and product_sale_price &amp;gt;=
+                    #{product.product_sale_price}
+                &lt;/if&gt;
+                &lt;if test=&quot;product.product_category != null&quot;&gt;
+                    &lt;if test=&quot;product.product_category.category_id != null&quot;&gt;and product_category_id =
+                        #{product.product_category.category_id}
+                    &lt;/if&gt;
+                &lt;/if&gt;
+            &lt;/if&gt;
+            &lt;if test=&quot;product_name_split != null&quot;&gt;
+                and
+                &lt;foreach collection=&quot;product_name_split&quot; index=&quot;index&quot; item=&quot;item&quot; open=&quot;(&quot; separator=&quot;and&quot; close=&quot;)&quot;&gt;
+                    product_name LIKE concat('%',#{item},'%')
+                &lt;/foreach&gt;
+            &lt;/if&gt;
+            &lt;if test=&quot;product_isEnabled_array != null&quot;&gt;
+                and product_isEnabled IN
+                &lt;foreach collection=&quot;product_isEnabled_array&quot; index=&quot;index&quot; item=&quot;item&quot; open=&quot;(&quot; separator=&quot;,&quot; close=&quot;)&quot;&gt;
+                    #{item}
+                &lt;/foreach&gt;
+            &lt;/if&gt;
+        &lt;/where&gt;
+        &lt;if test=&quot;orderUtil != null&quot;&gt;
+            ORDER BY ${orderUtil.orderBy}&lt;if test=&quot;orderUtil.isDesc&quot;&gt;desc &lt;/if&gt;
+        &lt;/if&gt;
+        &lt;if test=&quot;pageUtil != null&quot;&gt;
+            LIMIT #{pageUtil.pageStart},#{pageUtil.count}
+        &lt;/if&gt;
+    &lt;/select&gt;
+</code></pre>
+<p><code>ORDER BY</code>后面的内容没有采用<code>#{}</code>，而是从<code>orderUtil.orderBy</code>获得排序条件。在OrderUtil.java中查看具体实现方法<br>
+<img src="https://limpid94.github.io/post-images/1629564951823.PNG" alt="" loading="lazy"><br>
+此时如果有地方调用这两个方法中的一个并且参数可用，则可以造成SQL注入。当然查找的时候有限查找和前台有关的：<br>
+<img src="https://limpid94.github.io/post-images/1629565104406.PNG" alt="" loading="lazy"><br>
+跟进查看<br>
+<img src="https://limpid94.github.io/post-images/1629565177413.PNG" alt="" loading="lazy"><br>
+进一步查看<code>orderUtil</code>的来源<br>
+<img src="https://limpid94.github.io/post-images/1629565255699.PNG" alt="" loading="lazy"><br>
+可以看到<code>orderUtil</code>来自用户可控的<code>orderBy</code>，于是构造url: http://127.0.0.1:8080/tmall/product/6/1?category_id=13&amp;orderBy=product_id，并使用sqlmap进行检测，结果确实是存在时间型盲注。<br>
+<img src="https://limpid94.github.io/post-images/1629565481818.PNG" alt="" loading="lazy"></p>
+<h3 id="rce方面的查找">RCE方面的查找</h3>
+<p>从pom.xml中看到引入的第三方包有：</p>
+<pre><code class="language-xml"> &lt;dependencies&gt;
+    &lt;!-- Database --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;mysql&lt;/groupId&gt;
+      &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
+      &lt;version&gt;5.1.47&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+      &lt;artifactId&gt;druid&lt;/artifactId&gt;
+      &lt;version&gt;1.1.19&lt;/version&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- Json --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
+      &lt;artifactId&gt;fastjson&lt;/artifactId&gt;
+      &lt;version&gt;1.2.58&lt;/version&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- Jsp compatible--&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;javax.servlet&lt;/groupId&gt;
+      &lt;artifactId&gt;jstl&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.apache.tomcat.embed&lt;/groupId&gt;
+      &lt;artifactId&gt;tomcat-embed-jasper&lt;/artifactId&gt;
+      &lt;scope&gt;provided&lt;/scope&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.apache.taglibs&lt;/groupId&gt;
+      &lt;artifactId&gt;taglibs-standard-impl&lt;/artifactId&gt;
+      &lt;version&gt;1.2.5&lt;/version&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- Mybatis --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.mybatis&lt;/groupId&gt;
+      &lt;artifactId&gt;mybatis&lt;/artifactId&gt;
+      &lt;version&gt;3.5.1&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.mybatis.spring.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;mybatis-spring-boot-starter&lt;/artifactId&gt;
+      &lt;version&gt;2.1.0&lt;/version&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- Spring --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter&lt;/artifactId&gt;
+      &lt;exclusions&gt;
+        &lt;exclusion&gt;
+          &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+          &lt;artifactId&gt;spring-boot-starter-logging&lt;/artifactId&gt;
+        &lt;/exclusion&gt;
+      &lt;/exclusions&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
+      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
+      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-tomcat&lt;/artifactId&gt;
+      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+      &lt;artifactId&gt;spring-boot-starter-log4j2&lt;/artifactId&gt;
+    &lt;/dependency&gt;
+
+    &lt;!-- log4j2 --&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
+      &lt;artifactId&gt;log4j-core&lt;/artifactId&gt;
+      &lt;version&gt;2.10.0&lt;/version&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+      &lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
+      &lt;artifactId&gt;log4j-api&lt;/artifactId&gt;
+      &lt;version&gt;2.10.0&lt;/version&gt;
+    &lt;/dependency&gt;
+  &lt;/dependencies&gt;
+</code></pre>
+<p>看到使用了fastjson且版本号为1.2.58，确定存在反序列化的Nday，经过测试可以从dnslog看到查询记录，但是因为缺乏可以使用的第三方类导致最终利用失败</p>
+<p>接下去，逻辑类漏洞本来想写，但是由于它仿站没完成全部内容，遂放弃。</p>
+<h2 id="参考">参考</h2>
+<p>[SpringMVC 控制器向视图传值的方式] https://blog.csdn.net/u011403655/article/details/46336751</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E4%B8%8B%E8%BD%BD%E5%9C%B0%E5%9D%80">下载地址：</a></li>
+<li><a href="#%E5%AE%89%E8%A3%85">安装：</a>
+<ul>
+<li><a href="#xss">XSS</a>
+<ul>
+<li><a href="#%E5%8F%8D%E5%B0%84%E5%9E%8Bxss">反射型XSS</a></li>
+<li><a href="#%E5%AD%98%E5%82%A8%E5%9E%8Bxss">存储型XSS</a></li>
+</ul>
+</li>
+<li><a href="#%E4%BB%BB%E6%84%8F%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0">任意文件上传</a></li>
+<li><a href="#sql%E6%B3%A8%E5%85%A5">SQL注入</a></li>
+<li><a href="#rce%E6%96%B9%E9%9D%A2%E7%9A%84%E6%9F%A5%E6%89%BE">RCE方面的查找</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-jackson-jackson-fan-xu-lie-hua-lou-dong-xue-xi-yi/">
+              <h3 class="post-title">
+                【Java-Jackson】Jackson反序列化漏洞学习（一）
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
