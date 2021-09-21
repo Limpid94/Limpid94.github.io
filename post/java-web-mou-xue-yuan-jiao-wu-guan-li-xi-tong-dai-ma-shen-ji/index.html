@@ -2,23 +2,23 @@
   <head>
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>关于 | Limpid</title>
+<title>【JAVA-Web】某学院教务管理系统代码审计 | Limpid</title>
 <link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1632248402163">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
-<link rel="alternate" type="application/atom+xml" title="关于 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="alternate" type="application/atom+xml" title="【JAVA-Web】某学院教务管理系统代码审计 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
 
 
 
-    <meta name="description" content="
-欢迎来到我的小站呀，很高兴遇见你！🤝
-
-🏠 关于本站
-👨‍💻 博主是谁
-⛹ 兴趣爱好
-📬 联系我呀
-..." />
+    <meta name="description" content="测试环境
+Tomcat 9
+IDEA
+Mysql
+SSM架构
+审计过程
+SQL注入（未发现）
+在审计过程中发现，此源码mapper相关的xml中均采用#{}，也未发现in、order by、like后面采用字符串拼接，因此不存在SQL注入的..." />
     <meta name="keywords" content="" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
     <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
@@ -81,11 +81,11 @@
         <div class="post-detail">
           <article class="post">
             <h2 class="post-title">
-              关于
+              【JAVA-Web】某学院教务管理系统代码审计
             </h2>
             <div class="post-info">
               <span>
-                2019-01-25
+                2021-09-10
               </span>
               <span>
                 1 min read
@@ -95,23 +95,39 @@
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <blockquote>
-<p>欢迎来到我的小站呀，很高兴遇见你！🤝</p>
-</blockquote>
-<h2 id="关于本站">🏠 关于本站</h2>
-<h2 id="博主是谁">👨‍💻 博主是谁</h2>
-<h2 id="兴趣爱好">⛹ 兴趣爱好</h2>
-<h2 id="联系我呀">📬 联系我呀</h2>
+                <h2 id="测试环境">测试环境</h2>
+<p>Tomcat 9<br>
+IDEA<br>
+Mysql<br>
+SSM架构</p>
+<h2 id="审计过程">审计过程</h2>
+<h3 id="sql注入未发现">SQL注入（未发现）</h3>
+<p>在审计过程中发现，此源码mapper相关的xml中均采用<code>#{}</code>，也未发现in、order by、like后面采用字符串拼接，因此不存在SQL注入的情况</p>
+<h3 id="存储型xss">存储型XSS</h3>
+<p>在登录后的教评问题管理中，点击编辑并输入最简单的XSS测试语句<code>&lt;script&gt;alert(1)&lt;/script&gt;</code>后保存，发现能够成功弹窗<br>
+<img src="https://limpid94.github.io/post-images/1631292619361.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1631292686781.PNG" alt="" loading="lazy"></p>
+<p>对源码的进一步审计。这里从数据包找到<code>editoneev</code>关键字并在源码中进行查找：<br>
+<img src="https://limpid94.github.io/post-images/1631292816557.PNG" alt="" loading="lazy"><br>
+找到对应的Controller在<code>com/nsapi/niceschoolapi/controller/AppraiseController.java</code>中。<br>
+<img src="https://limpid94.github.io/post-images/1631293209256.PNG" alt="" loading="lazy"><br>
+第77行调用<code>appraiseService</code>实例的<code>editOneEv</code>方法，于是找到<code>AppraiseServiceImpl.java</code>：<br>
+<img src="https://limpid94.github.io/post-images/1631295064433.PNG" alt="" loading="lazy"><br>
+在第60行直接将传入的参数持久化保存。<br>
+整个过程没有进行参数的过滤。</p>
 
               </div>
               <div class="toc-container">
                 <ul class="markdownIt-TOC">
 <li>
 <ul>
-<li><a href="#%E5%85%B3%E4%BA%8E%E6%9C%AC%E7%AB%99">🏠 关于本站</a></li>
-<li><a href="#%E5%8D%9A%E4%B8%BB%E6%98%AF%E8%B0%81">👨‍💻 博主是谁</a></li>
-<li><a href="#%E5%85%B4%E8%B6%A3%E7%88%B1%E5%A5%BD">⛹ 兴趣爱好</a></li>
-<li><a href="#%E8%81%94%E7%B3%BB%E6%88%91%E5%91%80">📬 联系我呀</a></li>
+<li><a href="#%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83">测试环境</a></li>
+<li><a href="#%E5%AE%A1%E8%AE%A1%E8%BF%87%E7%A8%8B">审计过程</a>
+<ul>
+<li><a href="#sql%E6%B3%A8%E5%85%A5%E6%9C%AA%E5%8F%91%E7%8E%B0">SQL注入（未发现）</a></li>
+<li><a href="#%E5%AD%98%E5%82%A8%E5%9E%8Bxss">存储型XSS</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
